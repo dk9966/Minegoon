@@ -264,9 +264,9 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 | Phase | What | Exit test | Status |
 |---|---|---|---|
 | 0 | Research and planning docs | These three docs written | Done (Oct 8, 2026) |
-| 1 | World and body hello | Local 26.3 server running; you and the bot both in the world; bot walks to you on `!come` | Not started |
-| 2 | Body tools and notebook | Mine AI MCP's body ported and running against 26.3 through the translator; receipts and SQLite memory working; protected zones in place | Not started |
-| 3 | Brain loop | Job board, inspector, planner, foreman. First mission: "full iron armor from a fresh spawn," which passes 8 out of 10 lab runs | Not started |
+| 1 | World and body hello | Replaced by M0 and M1 in `04-mvp-plan.md` | Replaced (Oct 10, 2026) |
+| 2 | Body tools and notebook | Replaced by the Paper plugin milestones in `04-mvp-plan.md` | Replaced (Oct 10, 2026) |
+| 3 | Brain loop | Replaced by the `!get` planner in `04-mvp-plan.md` | Replaced (Oct 10, 2026) |
 | 4 | Dragon | Full dragon mission on normal difficulty, logged from start to finish; then a success-rate measurement over several seeds | Not started |
 | 5 | Castle | Blueprint office end to end: design, preview, approve, gather, build in sections, at least 98% blueprint match, all in survival | Not started |
 | 6 | Mansion | Combat tactics lab-tested; one full mansion cleared and lit | Not started |
@@ -274,7 +274,9 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 
 ### Notes for the next phase
 
-- Phase 1 setup is in `03-deployment-strategy.md`.
-- Before porting Mine AI MCP's body, check whether their pinned Mineflayer fork works through ViaBackwards on 26.3, or needs rebasing onto upstream Mineflayer 4.39.0 (which natively supports up to 26.1).
+- **Phases 1 to 3 are replaced by the MVP in `04-mvp-plan.md`.** Updated October 10, 2026: Apex switches from vanilla to Paper 26.3, online mode stays on, and the helper is a Paper plugin. No second account, no ViaProxy. Vanilla launchers still join, including a newer client once ViaVersion is installed or the server is updated. Mine AI MCP's action list is the spec for the plugin, not code we run.
+- Corrections found while planning the MVP: Mine Labs is now public. The Astra + Jev repo has no license, so we can borrow its ideas but not its code.
+- The body ideas in this doc still hold (receipts, reflexes, protected zones, no operator rights). The Mineflayer process in the diagram is the retired shape. The body now lives inside Paper. See `04-mvp-plan.md`.
+- Next work is M0 in that doc: back up Apex, switch the jar to Paper 26.3, and confirm both of you can join. Do not start a Mineflayer port.
 - Some of Mine AI MCP's development tools (Mine Labs) need private GitHub access. Plan to build our own lab scenarios instead of relying on theirs.
 - The testing method (same seeds, one setting at a time, harness-judged finish lines, read the first mistake in the logs) is recorded in `04-testing-dialogue.md`. Use it when Phase 3's lab starts.

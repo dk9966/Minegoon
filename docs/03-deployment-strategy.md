@@ -2,6 +2,8 @@
 
 Goals: run on the **latest Minecraft Java release (26.3)** and **never need a second Minecraft account**.
 
+**Update, October 10, 2026.** Production is the existing Apex world, switched from vanilla to Paper 26.3, still in online mode. Players keep the normal launcher. The helper will be server code, not a joining client, so it never needs a Microsoft account. `04-mvp-plan.md` is the current plan. The private offline server below stays a practice option.
+
 Facts checked October 8, 2026:
 
 | Thing | Latest | Supports 26.3? |
@@ -19,17 +21,11 @@ Facts checked October 8, 2026:
 
 ## The short story
 
-Your Minecraft account stays yours, and the bot never logs into Microsoft.
+Production is the Apex world you already play on. Switch that server from vanilla to Paper 26.3, keep online mode on, and keep the world. Friends join with the normal launcher. The helper is a Paper plugin: the server creates it, it never logs into Microsoft, and another helper later is another instance of the same plugin.
 
-You run a small private Minecraft server on your own Mac, inside Docker, on version 26.3. The server is set to **offline mode**, which means it doesn't ask Microsoft "is this a real paid account?" when someone joins. You join with your normal launcher and account, exactly as usual. The bot joins as a second player with any name you like, such as "Builder," with no account at all.
+The steps, the version trap (do not pick Paper 26.2), and the milestones are in `04-mvp-plan.md`. That doc wins.
 
-There's one wrinkle. The bot library (Mineflayer) only speaks up to Minecraft 26.1, and the game is now at 26.3. So the server runs a free translator plugin called **ViaBackwards** that lets a 26.1 player join a 26.3 world. The bot says "I'm 26.1," the server translates, and everyone is in the same world.
-
-Because offline mode means "no account checks," the server must stay private: only your Mac, or your home network, or a private VPN if friends join. Never open it to the internet.
-
-When Minecraft updates (26.4 and beyond), you update the server and the translator, which usually takes a few days after the release, and the bot keeps working without changes.
-
-Later, if we want to stop depending on the translator, we can move the bot's body *inside* the server as a mod. That removes the version gap entirely. The brain doesn't change, because it talks to the body through the same set of tools either way.
+The private offline Mineflayer server below is retired. It was the way to avoid a second account before we decided to stay on Apex. Mineflayer still stops at 26.1, so that path needed a translator and could not run on Apex's online-mode world without a paid login.
 
 ---
 
@@ -37,32 +33,34 @@ Later, if we want to stop depending on the translator, we can move the bot's bod
 
 | Option | Latest version? | Extra account? | Play beside it? | Effort | Notes |
 |---|---|---|---|---|---|
-| **A. Private server + Mineflayer bot + translator** (recommended now) | Yes, via ViaBackwards | No | Yes | Low: reuses Mine AI MCP's body | Translator adds a small risk of glitches |
-| B. Bot body as a server mod (fake player) | Yes, same day | No | Yes | High: write movement and actions in Java | Best long-term; server can stay in online mode |
+| **B. Paper plugin on the Apex world** (decided Oct 10) | Yes. ViaVersion covers the gap when a newer client ships first | No | Yes | High: movement and actions are server code | Online mode stays on. Vanilla clients. |
+| A. Private server + Mineflayer bot + translator | Yes, via ViaBackwards | No | Yes | Low, but the wrong server | Retired. Practice only if we ever need it. |
 | C. Bot drives your own character (Baritone + client mod) | Yes (Baritone 26.3) | No | No, it *is* you | Medium | Good for "work while I'm away" |
 | D. Singleplayer "Open to LAN" | Same version gap as A | No | Yes | Low | Vanilla LAN checks accounts; needs an extra mod. Not recommended |
-| Second Microsoft account | - | **Yes** | Yes | - | Ruled out |
+| Second Microsoft account | - | **Yes** | Yes | - | Ruled out Oct 10 |
 | Realms or public servers | - | **Yes** | Yes | - | They always check accounts, and many ban bots. Ruled out |
 
-### Why A first
+### Why B now
 
-It gets a working agent fastest. Mine AI MCP's body, the one that beat the dragon, is built on Mineflayer and is MIT licensed, so we start with proven parts instead of a blank page. ViaBackwards already supports 26.3 servers, so "latest version" works today.
+Apex stays the world you and your girlfriend already use. Paper is a drop-in for vanilla on the same version: same address, same launcher, a plugin folder added. The helper sees real block and inventory state, because it is inside the server. Account checks stay on for people. Scaling is another spawned player, not another Microsoft login.
 
-### Why B later
+The cost is the one we already knew: movement and actions are written for Paper, not taken from Mine AI MCP's Mineflayer body. Their action list and diamond progression stay the spec. Carpet's fake players are the same idea on Fabric; we use Paper so a content mod never forces her client to change.
 
-The translator is the one piece we don't control. Mine AI MCP showed how much reliability depends on the bot seeing exactly the right inventory and block state. Every translation step is a place where that can drift. A server-side body sees the real game state directly, works on new versions the day the mod is updated (Carpet shipped 26.3 support on release day), and lets the server keep account checks on for humans, since the bot never connects over the network at all. The cost is rewriting movement and actions in Java. The old server-side Baritone fork (Automatone) stopped at Minecraft 1.20.1, so there's nothing to reuse there.
+When she launches a version newer than the server (26.4 and after), update Paper to that version, or add ViaVersion until the Paper build exists. She still installs nothing.
 
 ### Why not D
 
 Vanilla "Open to LAN" checks accounts for anyone joining by address. Turning that off needs a client mod (such as Lan Server Properties / mcwifipnp or OfflineLAN), and the world only runs while your game is open. A small dedicated server is simpler and can run overnight while you're not playing.
 
-### The one caveat with A
+### Retired caveat, option A only
 
-ViaBackwards shows blocks and items that are newer than 26.1 to the bot as the closest older equivalent. So the bot won't knowingly use 26.2 and 26.3 additions (for example poplar wood or cushions) in builds until Mineflayer itself supports those versions. For the dragon and the mansion this doesn't matter. For castles, we design with blocks that exist in 26.1, which is almost all of them.
+ViaBackwards shows blocks and items that are newer than 26.1 to a Mineflayer bot as the closest older equivalent. This does not apply to the Paper plugin. The plugin runs on the server's real version.
 
 ---
 
-## Zoom in: how A is set up
+## Retired: how option A was set up
+
+Kept so the private-server design is still written down. Do not follow it for Apex.
 
 ### What runs where
 
@@ -196,14 +194,9 @@ If a new release breaks the translator badly, the fallback is to hold the server
 
 ---
 
-## Phase 1 checklist (first deployment)
+## Phase 1 checklist (retired with option A)
 
-1. Install Docker and pnpm.
-2. Create `infra/docker-compose.yml` from the example above and start it.
-3. Join `localhost` from your normal launcher on 26.3. Op yourself from the console.
-4. Write the smallest possible bot: connect as `Builder` with version 26.1, say hello in chat, and walk to you on `!come`.
-5. Confirm through the translator that the bot sees the right blocks, inventory, and health, and that it can mine, craft, and place one block correctly.
-6. Update the roadmap in `02-how-we-make-it-better.md` with what worked, what didn't, and anything Phase 2 needs to know.
+Do not follow this. Current first steps are M0 and M1 in `04-mvp-plan.md`: switch Apex to Paper 26.3, then spawn the helper from a plugin on a local Paper practice world.
 
 ---
 
