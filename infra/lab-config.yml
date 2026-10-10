@@ -1,0 +1,15 @@
+# Copied to data/plugins/Minegoon/config.yml on the first practice run.
+# Edit that copy (for example to add an OpenRouter key); it is git-ignored.
+helper:
+  name: Builder
+
+openrouter:
+  api-key: ""
+  parse-model: google/gemini-3.8-flash
+  unstuck-model: google/gemini-3.8-flash
+  fallback-model: anthropic/claude-opus-5.5
+
+trips:
+  scan-radius: 48
+
+lab: true

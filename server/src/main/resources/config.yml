@@ -1,0 +1,17 @@
+helper:
+  name: Builder
+
+openrouter:
+  # Paste the key here on the server only. Without a key, free-text chat is
+  # ignored and the unstuck step falls back to replanning.
+  api-key: ""
+  parse-model: google/gemini-3.8-flash
+  unstuck-model: google/gemini-3.8-flash
+  fallback-model: anthropic/claude-opus-5.5
+
+trips:
+  # How far around itself the helper looks for blocks and animals.
+  scan-radius: 48
+
+# Practice server only: enables /minegoon reset.
+lab: false

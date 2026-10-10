@@ -1,0 +1,13 @@
+name: Minegoon
+version: ${version}
+main: dev.minegoon.MinegoonPlugin
+api-version: "26.3"
+description: A survival helper you talk to in chat.
+commands:
+  minegoon:
+    description: Admin controls for the helper (console or operators).
+    usage: /minegoon <get|status|stop|pause|resume|come|give|protect|allow|plan|results|reset>
+    permission: minegoon.admin
+permissions:
+  minegoon.admin:
+    default: op

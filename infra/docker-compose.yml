@@ -1,0 +1,23 @@
+# The practice server: same Paper version as Apex, a fixed seed so runs are
+# repeatable, and only reachable from this machine.
+services:
+  practice:
+    image: itzg/minecraft-server:java25
+    container_name: minegoon-practice
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "26.3"
+      PAPER_CHANNEL: experimental
+      MEMORY: 4G
+      SEED: "minegoon"
+      MODE: survival
+      DIFFICULTY: normal
+      SPAWN_PROTECTION: 0
+      VIEW_DISTANCE: 8
+      SIMULATION_DISTANCE: 8
+      MOTD: Minegoon practice server
+    ports:
+      - "127.0.0.1:25565:25565"
+    volumes:
+      - ./data:/data

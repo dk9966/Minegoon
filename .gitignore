@@ -1,0 +1,8 @@
+.gradle/
+build/
+.idea/
+*.iml
+.DS_Store
+
+infra/data/
+scripts/results/
