@@ -83,11 +83,20 @@ public final class JobBoard {
 
     /** Swaps every unfinished job for a fresh plan, placed after the finished ones. */
     public synchronized void replaceUnfinished(long taskId, List<Step> steps) {
-        db.update("DELETE FROM jobs WHERE task_id = ? AND " + UNFINISHED, taskId);
-        int position = db.first("SELECT COALESCE(MAX(position), 0) AS last FROM jobs WHERE task_id = ?",
-            row -> row.getInt("last"), taskId).orElse(0);
-        for (Step step : steps) {
-            insert(taskId, ++position, step);
+        db.transaction(() -> {
+            db.update("DELETE FROM jobs WHERE task_id = ? AND " + UNFINISHED, taskId);
+            int[] position = {db.first("SELECT COALESCE(MAX(position), 0) AS last FROM jobs WHERE task_id = ?",
+                row -> row.getInt("last"), taskId).orElse(0)};
+            for (Step step : steps) {
+                insert(taskId, ++position[0], step);
+            }
+        });
+    }
+
+    /** Inserts steps so the first one runs next, ahead of whatever was unfinished. */
+    public synchronized void addAllFront(long taskId, List<Step> steps) {
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            addFront(taskId, steps.get(i));
         }
     }
 

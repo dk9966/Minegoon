@@ -2,16 +2,19 @@ helper:
   name: Builder
 
 openrouter:
-  # Paste the key here on the server only. Without a key, free-text chat is
-  # ignored and the unstuck step falls back to replanning.
+  # Paste the key here on the server only. "get 5 diamond" and the other
+  # commands work with or without a key. With a key, naming the helper also
+  # turns other sentences into a command, and when a search keeps coming up
+  # empty the advice model is asked once where to look. Good advice is kept in
+  # lessons.json. Without a key, the helper searches with what it knows.
   api-key: ""
   parse-model: google/gemini-3.8-flash
-  unstuck-model: google/gemini-3.8-flash
+  advice-model: google/gemini-3.8-flash
   fallback-model: anthropic/claude-opus-5.5
 
-trips:
-  # How far around itself the helper looks for blocks and animals.
-  scan-radius: 48
-
-# Practice server only: enables /minegoon reset.
+# Practice server only: enables /minegoon reset and spar.
 lab: false
+
+# Lab suite only. Each name is its own copy of the world, with its own helper,
+# sharing this one server. Leave the list empty on a server people play on.
+lanes: []

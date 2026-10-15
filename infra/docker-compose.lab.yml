@@ -1,0 +1,29 @@
+# One Paper process for the long-task suite. Several trips share it, each on
+# its own world. Docker on this machine has about 8 GB, so the usual practice
+# server is stopped first. LAB_MEMORY / LAB_CAP / LEVEL_TYPE default to the
+# single-world template boot; the suite passes its own values.
+services:
+  practice:
+    image: itzg/minecraft-server:java25
+    container_name: ${LAB_NAME}
+    mem_limit: ${LAB_CAP:-3g}
+    memswap_limit: ${LAB_CAP:-3g}
+    restart: "no"
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "26.3"
+      PAPER_CHANNEL: experimental
+      MEMORY: ${LAB_MEMORY:-2G}
+      SEED: "minegoon"
+      MODE: survival
+      DIFFICULTY: normal
+      SPAWN_PROTECTION: 0
+      VIEW_DISTANCE: 8
+      SIMULATION_DISTANCE: 8
+      LEVEL_TYPE: ${LEVEL_TYPE:-minecraft:normal}
+      ALLOW_NETHER: ${ALLOW_NETHER:-true}
+      MOTD: Minegoon lab
+      ENABLE_RCON: "true"
+    volumes:
+      - ${LAB_DATA}:/data

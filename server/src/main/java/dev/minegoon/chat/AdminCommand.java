@@ -21,17 +21,20 @@ import org.bukkit.entity.Player;
 public final class AdminCommand implements TabExecutor {
 
     private static final List<String> SUBCOMMANDS = List.of(
-        "get", "status", "stop", "pause", "resume", "come", "give", "protect", "allow", "plan", "results", "reset");
+        "get", "status", "inventory", "stop", "pause", "resume", "come", "give", "protect", "allow", "watch", "back",
+        "plan", "results", "reset");
 
     private final Helper helper;
     private final Commands commands;
     private final Foreman foreman;
+    private final Peek peek;
     private final boolean lab;
 
-    public AdminCommand(Helper helper, Commands commands, Foreman foreman, boolean lab) {
+    public AdminCommand(Helper helper, Commands commands, Foreman foreman, Peek peek, boolean lab) {
         this.helper = helper;
         this.commands = commands;
         this.foreman = foreman;
+        this.peek = peek;
         this.lab = lab;
     }
 
@@ -41,6 +44,7 @@ public final class AdminCommand implements TabExecutor {
             return false;
         }
         switch (args[0]) {
+            case "inventory", "inv" -> inventory(sender);
             case "plan" -> plan(sender, Arrays.copyOfRange(args, 1, args.length));
             case "results" -> results(sender);
             case "reset" -> reset(sender);
@@ -52,6 +56,14 @@ public final class AdminCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         return args.length == 1 ? SUBCOMMANDS.stream().filter(s -> s.startsWith(args[0])).toList() : List.of();
+    }
+
+    private void inventory(CommandSender sender) {
+        if (sender instanceof Player) {
+            commands.handle(speaker(sender), "!inventory");
+            return;
+        }
+        peek.report().forEach(sender::sendMessage);
     }
 
     private void plan(CommandSender sender, String[] args) {

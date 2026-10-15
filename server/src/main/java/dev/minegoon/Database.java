@@ -74,7 +74,11 @@ public final class Database implements AutoCloseable {
     public Database(Path file) throws SQLException {
         connection = DriverManager.getConnection("jdbc:sqlite:" + file);
         try (Statement statement = connection.createStatement()) {
-            statement.execute("PRAGMA journal_mode=WAL");
+            // WAL plus memory-mapped IO corrupts this file on a Docker Desktop
+            // bind mount. A rollback journal stays on one file and survives it.
+            statement.execute("PRAGMA journal_mode=DELETE");
+            statement.execute("PRAGMA synchronous=FULL");
+            statement.execute("PRAGMA mmap_size=0");
             statement.execute("PRAGMA foreign_keys=ON");
             for (String table : SCHEMA.split(";")) {
                 if (!table.isBlank()) {
@@ -97,6 +101,27 @@ public final class Database implements AutoCloseable {
             }
         } catch (SQLException e) {
             throw new IllegalStateException(sql, e);
+        }
+    }
+
+    /** Several writes that must land together, or not at all. */
+    public synchronized void transaction(Runnable work) {
+        try {
+            connection.setAutoCommit(false);
+            work.run();
+            connection.commit();
+        } catch (RuntimeException e) {
+            rollback();
+            throw e;
+        } catch (SQLException e) {
+            rollback();
+            throw new IllegalStateException("transaction", e);
+        } finally {
+            try {
+                connection.setAutoCommit(true);
+            } catch (SQLException e) {
+                throw new IllegalStateException("transaction", e);
+            }
         }
     }
 
@@ -127,6 +152,14 @@ public final class Database implements AutoCloseable {
     public void log(Long taskId, String kind, String detail) {
         insert("INSERT INTO events (task_id, kind, detail, at) VALUES (?, ?, ?, ?)",
             taskId, kind, detail, System.currentTimeMillis());
+    }
+
+    private void rollback() {
+        try {
+            connection.rollback();
+        } catch (SQLException ignored) {
+            // The original failure is the one worth reporting.
+        }
     }
 
     private PreparedStatement prepare(String sql, Object... args) throws SQLException {

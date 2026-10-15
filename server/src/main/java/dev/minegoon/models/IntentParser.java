@@ -5,9 +5,10 @@ import java.io.IOException;
 import java.util.Optional;
 
 /**
- * Turns free chat aimed at the helper, such as "Builder, grab me a few iron
- * ingots", into one of the ! commands. The model only picks fields; the result
- * goes through the same command handling as anything typed by hand.
+ * Turns free chat aimed at the helper, such as "Builder, I need a bucket",
+ * into a command. A sentence that is already a command never reaches here.
+ * The model only picks fields; the result goes through the same handling as
+ * anything typed by hand.
  */
 public final class IntentParser {
 
@@ -17,7 +18,7 @@ public final class IntentParser {
           "properties": {
             "command": {
               "type": "string",
-              "enum": ["get", "come", "give", "status", "stop", "pause", "resume", "protect", "allow", "none"],
+              "enum": ["get", "come", "give", "status", "inventory", "stop", "pause", "resume", "protect", "allow", "watch", "back", "none"],
               "description": "The request, or none if the message is not a request for the helper"
             },
             "item": {
@@ -37,9 +38,10 @@ public final class IntentParser {
     private static final String SYSTEM = """
         You read Minecraft chat aimed at a helper player named %s and turn it into a command.
         get: fetch items ("a few" means 3, "some" means 8, "a stack" means 64). come: walk to the speaker.
-        give: hand over what it gathered. status: report progress. stop: drop the task. pause and resume.
+        give: hand over what it gathered. status: report progress. inventory: show what you are carrying, including a question about that. stop: drop the task. pause and resume.
         protect: never dig within a radius of the speaker. allow: may dig player-made blocks nearby for this task.
-        Use none for greetings, questions, or anything that is not a request.
+        watch: follow the speaker in spectator, through your eyes. back: return them to where they were.
+        Use none for greetings, questions that are not about what you are carrying, or anything that is not a request.
         """;
 
     private final OpenRouter router;

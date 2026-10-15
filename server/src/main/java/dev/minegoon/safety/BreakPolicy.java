@@ -17,6 +17,8 @@ import org.bukkit.block.data.type.Leaves;
 public final class BreakPolicy {
 
     private static final int TREE_REACH = 6;
+    /** As far up a trunk as the leaves are looked for. Giant jungle trunks run about 30 logs. */
+    private static final int TRUNK = 32;
 
     private final Database db;
     private final Zones zones;
@@ -72,12 +74,19 @@ public final class BreakPolicy {
         }
     }
 
-    /** A log counts as a tree only if leaves that grew naturally sit above it. Log cabins have none. */
+    /**
+     * A log counts as a tree only if leaves that grew naturally sit near the top
+     * of its trunk, the logs straight above it. Log cabins have none.
+     */
     private static boolean partOfTree(BlockReader world, int x, int y, int z) {
-        for (int dy = 0; dy <= TREE_REACH; dy++) {
+        int top = y;
+        while (top - y < TRUNK && Tag.LOGS.isTagged(world.type(x, top + 1, z))) {
+            top++;
+        }
+        for (int level = top + TREE_REACH; level >= y; level--) {
             for (int dx = -2; dx <= 2; dx++) {
                 for (int dz = -2; dz <= 2; dz++) {
-                    if (world.data(x + dx, y + dy, z + dz) instanceof Leaves leaves && !leaves.isPersistent()) {
+                    if (world.data(x + dx, level, z + dz) instanceof Leaves leaves && !leaves.isPersistent()) {
                         return true;
                     }
                 }

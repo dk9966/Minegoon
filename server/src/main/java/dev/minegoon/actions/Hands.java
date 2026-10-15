@@ -2,6 +2,7 @@ package dev.minegoon.actions;
 
 import dev.minegoon.ItemSet;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
@@ -13,6 +14,8 @@ import org.bukkit.inventory.PlayerInventory;
 public final class Hands {
 
     private static final int HOTBAR = 9;
+    /** Ticks a wear-only tool counts as slower than a bare hand, so it is kept for what it is for. */
+    private static final double WEAR = 0.5;
 
     private Hands() {
     }
@@ -65,23 +68,56 @@ public final class Hands {
         return best;
     }
 
-    /** Puts whatever breaks this block fastest into the main hand. */
+    /**
+     * Puts whatever breaks this block fastest into the main hand. Iron and
+     * better tools are spared when a cheaper tool also suits the block, so an
+     * iron pickaxe lasts to the diamonds instead of wearing out on the stairs down.
+     * A tool that would only wear out on the block, like a sword on dirt, counts
+     * as a little slower than a bare hand.
+     */
     public static void holdFastestFor(Player player, BlockData block) {
         PlayerInventory inventory = player.getInventory();
+        ItemStack[] storage = inventory.getStorageContents();
+        boolean spare = Arrays.stream(storage)
+            .anyMatch(stack -> stack != null && !precious(stack) && block.isPreferredTool(stack));
         int bestSlot = inventory.getHeldItemSlot();
-        double bestTicks = Digging.ticks(block, inventory.getItemInMainHand());
-        for (int slot = 0; slot < inventory.getStorageContents().length; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack == null) {
-                continue;
-            }
-            double ticks = Digging.ticks(block, stack);
-            if (ticks < bestTicks) {
+        double best = breakCost(block, storage[bestSlot], spare);
+        for (int slot = 0; slot < storage.length; slot++) {
+            double cost = breakCost(block, storage[slot], spare);
+            if (cost < best) {
                 bestSlot = slot;
-                bestTicks = ticks;
+                best = cost;
             }
         }
         hold(player, bestSlot);
+    }
+
+    private static double breakCost(BlockData block, ItemStack stack, boolean spare) {
+        ItemStack tool = stack == null ? ItemStack.empty() : stack;
+        if (spare && precious(tool)) {
+            return Double.MAX_VALUE;
+        }
+        boolean wears = tool.getType().getMaxDurability() > 0 && !block.isPreferredTool(tool);
+        return Digging.ticks(block, tool) + (wears ? WEAR : 0);
+    }
+
+    private static boolean precious(ItemStack stack) {
+        String name = stack.getType().name();
+        return name.startsWith("IRON_") || name.startsWith("GOLDEN_") || name.startsWith("DIAMOND_")
+            || name.startsWith("NETHERITE_");
+    }
+
+    /** Puts {@code material} in the main hand. Returns false when the helper has none. */
+    public static boolean hold(Player player, Material material) {
+        PlayerInventory inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getStorageContents().length; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack != null && stack.getType() == material) {
+                hold(player, slot);
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void hold(Player player, int slot) {

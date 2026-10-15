@@ -3,6 +3,8 @@ package dev.minegoon.planner;
 import dev.minegoon.ItemSet;
 import dev.minegoon.jobs.Step;
 import dev.minegoon.planner.Cookbook.Craft;
+import dev.minegoon.planner.Cookbook.Fill;
+import dev.minegoon.planner.Cookbook.Grow;
 import dev.minegoon.planner.Cookbook.Hunt;
 import dev.minegoon.planner.Cookbook.Ingredient;
 import dev.minegoon.planner.Cookbook.Mine;
@@ -13,11 +15,15 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import org.bukkit.Material;
 import org.bukkit.Tag;
+import org.bukkit.entity.Enemy;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 
 /**
  * Turns "5 diamond" into an ordered list of steps. It works backwards from the
@@ -31,6 +37,8 @@ public final class Planner {
     private static final int MAX_TRIES = 5_000;
     private static final ItemSet TABLE = ItemSet.of(Material.CRAFTING_TABLE);
     private static final ItemSet FURNACE = ItemSet.of(Material.FURNACE);
+    private static final ItemSet SWORDS = ItemSet.of(Tag.ITEMS_SWORDS.getValues());
+    private static final ItemSet HOES = ItemSet.of(Tag.ITEMS_HOES.getValues());
     private static final ItemSet COAL = ItemSet.of(Set.of(Material.COAL, Material.CHARCOAL));
     private static final ItemSet PLANKS = ItemSet.of(Tag.PLANKS.getValues());
     private static final int SMELTS_PER_COAL = 8;
@@ -43,9 +51,28 @@ public final class Planner {
     }
 
     public static final class Unplannable extends Exception {
+        private final ItemSet unknown;
+
         Unplannable(String reason) {
             super(reason);
+            this.unknown = null;
         }
+
+        /** Nothing in the cookbook gets {@code unknown}. */
+        Unplannable(ItemSet unknown) {
+            super("I don't know a survival way to get " + unknown.name());
+            this.unknown = unknown;
+        }
+
+        /** The items with no known way to get them, when that is why planning failed. */
+        public Optional<ItemSet> unknown() {
+            return Optional.ofNullable(unknown);
+        }
+    }
+
+    /** From now on, {@code items} can be mined from {@code blocks}. */
+    public void learn(ItemSet items, Set<Material> blocks) {
+        book.learn(items, blocks);
     }
 
     /** The cookbook ways a step stands for, so a replan can avoid them. */
@@ -53,10 +80,15 @@ public final class Planner {
         String way = switch (step) {
             case Step.Gather gather -> "mine";
             case Step.Hunt hunt -> "hunt";
+            case Step.Grow grow -> "grow";
+            case Step.Fill fill -> "fill";
             case Step.Craft craft -> "craft";
             case Step.Smelt smelt -> "smelt";
             case Step.Deliver deliver -> null;
             case Step.Recover recover -> null;
+            case Step.Meal meal -> null;
+            case Step.Sleep sleep -> null;
+            case Step.Shelter shelter -> null;
         };
         if (way == null) {
             return Set.of();
@@ -121,7 +153,7 @@ public final class Planner {
             try {
                 List<Way> ways = book.ways(items, avoid);
                 if (ways.isEmpty()) {
-                    throw new Unplannable("I don't know a survival way to get " + items.name());
+                    throw new Unplannable(items);
                 }
                 Unplannable firstProblem = null;
                 for (Way way : ways) {
@@ -161,12 +193,30 @@ public final class Planner {
                     if (mine.tools() != null) {
                         ensure(mine.tools(), next);
                     }
-                    add("gather", mine.output(), amount, count -> new Step.Gather(mine.output(), mine.blocks(), count));
+                    add("gather", mine.output(), amount,
+                        count -> new Step.Gather(mine.output(), mine.blocks(), count, mine.ripe()));
                     stock.add(mine.output(), amount);
                 }
                 case Hunt hunt -> {
+                    if (hostile(hunt.mobs())) {
+                        ensure(SWORDS, next);
+                    }
                     add("hunt", hunt.output(), amount, count -> new Step.Hunt(hunt.output(), hunt.mobs(), count));
                     stock.add(hunt.output(), amount);
+                }
+                case Grow grow -> {
+                    ensure(HOES, next);
+                    need(ItemSet.of(grow.seed()), amount, next);
+                    need(grow.feed(), amount * grow.feedEach(), next);
+                    add("grow", grow.output(), amount,
+                        count -> new Step.Grow(grow.output(), grow.seed(), grow.crop(), count));
+                    stock.add(grow.output(), amount);
+                }
+                case Fill fill -> {
+                    need(ItemSet.of(fill.container()), amount, next);
+                    add("fill", fill.output(), amount,
+                        count -> new Step.Fill(fill.output(), fill.container(), fill.fluid(), count));
+                    stock.add(fill.output(), amount);
                 }
                 case Craft craft -> {
                     int times = Math.ceilDiv(amount, craft.yield());
@@ -188,6 +238,13 @@ public final class Planner {
                     stock.add(smelt.output(), amount);
                 }
             }
+        }
+
+        private static boolean hostile(Set<EntityType> mobs) {
+            return mobs.stream().anyMatch(type -> {
+                Class<? extends Entity> kind = type.getEntityClass();
+                return kind != null && Enemy.class.isAssignableFrom(kind);
+            });
         }
 
         /** Coal already on hand goes first; otherwise planks, which every forest has. */

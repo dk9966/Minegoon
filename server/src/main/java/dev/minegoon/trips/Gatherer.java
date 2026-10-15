@@ -11,62 +11,61 @@ import dev.minegoon.actions.Miner;
 import dev.minegoon.actions.Mover;
 import dev.minegoon.actions.Pickup;
 import dev.minegoon.jobs.Step;
-import dev.minegoon.world.Blocks;
 import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
+import dev.minegoon.world.Vision;
 import dev.minegoon.world.WorldView;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
-import org.bukkit.entity.Ageable;
-import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 /**
  * Trips out into the world: finding blocks or animals that drop what a job
- * needs, walking to them, and collecting the drops. When nothing is in range
- * it explores outward a few times before giving up.
+ * needs, walking to them, and collecting the drops. What it looks for is
+ * whatever is in sight; when nothing is, the prospector takes it somewhere
+ * better to look from.
  */
 public final class Gatherer {
 
-    private static final int MAX_EXPLORES = 5;
-    private static final int EXPLORE_DISTANCE = 40;
     private static final int MAX_CANDIDATES = 64;
     private static final int RESCAN_EVERY = 8;
-    private static final double BURIED_PENALTY = 6;
     private static final double HIT_RANGE = 2.8;
     private static final int MAX_CHASES = 24;
+    private static final int FED = Retreat.REGENERATES_AT;
+    private static final int BITE_TICKS = 40;
+    public static final Set<EntityType> MEALS = EnumSet.of(
+        EntityType.COW, EntityType.PIG, EntityType.SHEEP, EntityType.CHICKEN);
 
     private final Body body;
     private final Mover mover;
     private final Miner miner;
     private final Pickup pickup;
     private final Retreat retreat;
-    private final int radius;
+    private final Vision vision;
+    private final Prospector prospector;
 
-    public Gatherer(Body body, Mover mover, Miner miner, Pickup pickup, Retreat retreat, int radius) {
+    public Gatherer(Body body, Mover mover, Miner miner, Pickup pickup, Retreat retreat, Vision vision,
+                    Prospector prospector) {
         this.body = body;
         this.mover = mover;
         this.miner = miner;
         this.pickup = pickup;
         this.retreat = retreat;
-        this.radius = radius;
+        this.vision = vision;
+        this.prospector = prospector;
     }
 
     /** Mines until the inventory holds {@code target} of the item. */
@@ -75,67 +74,108 @@ public final class Gatherer {
         if (minable.isEmpty()) {
             throw new ActionFailed("I don't have a tool that can harvest " + ItemSet.of(step.blocks()).name());
         }
-        Checkpoint checkpoint = retreat.guarding(neededFor(minable));
-        Set<Pos> skipped = new HashSet<>();
         Deque<Pos> candidates = new ArrayDeque<>();
-        int explores = 0;
-        int minedSinceScan = 0;
+        Checkpoint checkpoint = retreat.guarding(neededFor(minable), () -> !candidates.isEmpty());
+        Prospector.Search search = prospector.search(step);
+        Set<Pos> skipped = new HashSet<>();
+        int minedSinceLook = 0;
         while (count(step.item()) < target) {
             checkpoint.check();
-            if (candidates.isEmpty() || minedSinceScan == RESCAN_EVERY) {
-                candidates = scan(minable, skipped);
-                minedSinceScan = 0;
+            if (candidates.isEmpty() || minedSinceLook == RESCAN_EVERY) {
+                candidates.clear();
+                candidates.addAll(vision.blocks(minable, MAX_CANDIDATES,
+                    takeable(skipped, step.ripe()).and(candidate -> search.reachable(candidate.pos()))));
+                minedSinceLook = 0;
             }
             if (candidates.isEmpty()) {
-                if (explores++ == MAX_EXPLORES) {
-                    throw new ActionFailed("I found no " + ItemSet.of(minable).name() + " within reach");
-                }
-                explore(checkpoint);
+                search.next(checkpoint);
                 continue;
             }
             Pos block = candidates.poll();
             skipped.add(block);
             boolean still = body.main().call(() -> minable.contains(body.live().type(block.x(), block.y(), block.z())));
-            if (still && mover.walk(Goal.reach(block), checkpoint) && miner.mine(block).confirmed()) {
-                minedSinceScan++;
+            boolean walked = still && mover.walk(Goal.reach(block), checkpoint);
+            if (still && !walked) {
+                search.missed(block, checkpoint);
+                candidates.clear();
+                continue;
+            }
+            if (walked && miner.mine(block).confirmed()) {
+                minedSinceLook++;
+                search.found();
+                vision.touched(block);
                 body.main().sleep(10);
                 pickup.collect(block, 4, checkpoint);
             }
         }
     }
 
-    /** Hunts passive animals until the inventory holds {@code target} of the item. */
-    public void hunt(Step.Hunt step, int target) {
-        int explores = 0;
-        while (count(step.item()) < target) {
-            retreat.check();
-            Optional<UUID> prey = body.main().call(() -> nearestPrey(step));
-            if (prey.isEmpty()) {
-                if (explores++ == MAX_EXPLORES) {
-                    throw new ActionFailed("I found no animals that drop " + step.item().name());
-                }
-                explore(retreat);
+    /**
+     * Eats until health can come back, hunting a cow, pig, sheep, or chicken
+     * whenever there is nothing left to eat. Stops when the helper is fed, not
+     * when the meat is still sitting in the inventory.
+     */
+    public void forage() {
+        Checkpoint checkpoint = retreat.ignoringHunger();
+        Prospector.Search search = prospector.search("animals to eat", MEALS.stream().map(Prospector::key).toList());
+        while (foodLevel() < FED) {
+            checkpoint.check();
+            if (body.main().call(() -> Food.any(body.player()) && Reflexes.eat(body.player(), FED))) {
+                body.main().sleep(BITE_TICKS);
                 continue;
             }
-            Pos fell = chase(prey.get());
+            List<UUID> prey = vision.creatures(MEALS, 1);
+            if (prey.isEmpty()) {
+                search.next(checkpoint);
+                continue;
+            }
+            Pos fell = chase(prey.getFirst(), checkpoint);
             if (fell != null) {
+                search.found();
+                body.main().sleep(10);
+                pickup.collect(fell, 5, checkpoint);
+            }
+        }
+    }
+
+    /** The tool a gather is about to break, or null when the helper can keep digging. */
+    public Material replacementFor(Set<Material> blocks) {
+        return retreat.wornTool(neededFor(blocks));
+    }
+
+    /** Hunts animals until the inventory holds {@code target} of the item. */
+    public void hunt(Step.Hunt step, int target) {
+        Prospector.Search search = prospector.search(step);
+        while (count(step.item()) < target) {
+            retreat.check();
+            List<UUID> prey = vision.creatures(step.mobs(), 1);
+            if (prey.isEmpty()) {
+                search.next(retreat);
+                continue;
+            }
+            Pos fell = chase(prey.getFirst(), retreat);
+            if (fell != null) {
+                search.found();
                 body.main().sleep(10);
                 pickup.collect(fell, 5, retreat);
             }
         }
     }
 
-    /** Walks a good distance in a random compass direction, to load fresh ground. */
-    public void explore(Checkpoint checkpoint) {
-        int[][] directions = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
-        int first = ThreadLocalRandom.current().nextInt(directions.length);
-        for (int turn = 0; turn < directions.length; turn++) {
-            int[] direction = directions[(first + turn) % directions.length];
-            if (mover.walk(Goal.away(mover.feet(), direction[0], direction[1], EXPLORE_DISTANCE), checkpoint)) {
-                return;
-            }
-        }
-        throw new ActionFailed("I can't find a way out of here to explore");
+    /** How many matching blocks are in sight from here, capped at the search limit. */
+    public int visible(Set<Material> wanted, boolean ripe) {
+        return vision.blocks(wanted, MAX_CANDIDATES, takeable(Set.of(), ripe)).size();
+    }
+
+    private Predicate<Vision.Candidate> takeable(Set<Pos> skipped, boolean ripe) {
+        return candidate -> {
+            Pos pos = candidate.pos();
+            WorldView view = candidate.view();
+            return !skipped.contains(pos)
+                && (!ripe || mature(view, pos))
+                && body.policy().mayBreak(view, pos.x(), pos.y(), pos.z())
+                && !Digging.floodsIfOpened(view, pos.x(), pos.y(), pos.z());
+        };
     }
 
     private int count(ItemSet item) {
@@ -163,65 +203,19 @@ public final class Gatherer {
         return stack -> !picky.isEmpty() && picky.stream().anyMatch(data -> data.isPreferredTool(stack));
     }
 
-    private Deque<Pos> scan(Set<Material> wanted, Set<Pos> skipped) {
-        Pos feet = mover.feet();
-        WorldView view = WorldView.capture(body.main(), body.main().call(body::world),
-            feet.x() - radius, feet.z() - radius, feet.x() + radius, feet.z() + radius);
-        record Candidate(Pos pos, double score) {
-        }
-        List<Candidate> found = new ArrayList<>();
-        long reach = (long) radius * radius;
-        for (int x = feet.x() - radius; x <= feet.x() + radius; x++) {
-            for (int z = feet.z() - radius; z <= feet.z() + radius; z++) {
-                long dx = x - feet.x();
-                long dz = z - feet.z();
-                if (dx * dx + dz * dz > reach || !view.covers(x, z)) {
-                    continue;
-                }
-                for (int y = view.minY(); y < view.maxY(); y++) {
-                    if (!wanted.contains(view.type(x, y, z))) {
-                        continue;
-                    }
-                    Pos pos = new Pos(x, y, z);
-                    if (skipped.contains(pos) || !body.policy().mayBreak(view, x, y, z)
-                        || Digging.floodsIfOpened(view, x, y, z)) {
-                        continue;
-                    }
-                    double score = Math.sqrt(pos.distanceSquared(feet)) + (exposed(view, pos) ? 0 : BURIED_PENALTY);
-                    found.add(new Candidate(pos, score));
-                }
-            }
-        }
-        return found.stream()
-            .sorted(Comparator.comparingDouble(Candidate::score))
-            .limit(MAX_CANDIDATES)
-            .map(Candidate::pos)
-            .collect(Collectors.toCollection(ArrayDeque::new));
+    private int foodLevel() {
+        return body.main().call(() -> body.player().getFoodLevel());
     }
 
-    private static boolean exposed(WorldView view, Pos pos) {
-        int[][] sides = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-        for (int[] side : sides) {
-            if (Blocks.passable(view.type(pos.x() + side[0], pos.y() + side[1], pos.z() + side[2]))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private Optional<UUID> nearestPrey(Step.Hunt step) {
-        Player player = body.player();
-        return player.getWorld().getNearbyEntities(player.getLocation(), radius, radius / 2.0, radius).stream()
-            .filter(entity -> step.mobs().contains(entity.getType()) && entity instanceof LivingEntity && !entity.isDead())
-            .filter(entity -> !(entity instanceof Ageable ageable) || ageable.isAdult())
-            .min(Comparator.comparingDouble(entity -> entity.getLocation().distanceSquared(player.getLocation())))
-            .map(Entity::getUniqueId);
+    private static boolean mature(WorldView view, Pos pos) {
+        return view.data(pos.x(), pos.y(), pos.z()) instanceof org.bukkit.block.data.Ageable age
+            && age.getAge() >= age.getMaximumAge();
     }
 
     /** Follows and hits the animal; returns where it fell, or null if it got away. */
-    private Pos chase(UUID id) {
+    private Pos chase(UUID id, Checkpoint checkpoint) {
         for (int attempt = 0; attempt < MAX_CHASES; attempt++) {
-            retreat.check();
+            checkpoint.check();
             Location at = body.main().call(() -> Bukkit.getEntity(id) instanceof LivingEntity prey && !prey.isDead()
                 ? prey.getLocation() : null);
             if (at == null) {
@@ -229,7 +223,7 @@ public final class Gatherer {
             }
             boolean close = body.main().call(() -> body.player().getLocation().distance(at) <= HIT_RANGE);
             if (!close) {
-                mover.walk(Goal.near(Pos.of(at), HIT_RANGE - 0.5), retreat);
+                mover.walk(Goal.near(Pos.of(at), HIT_RANGE - 0.5), checkpoint);
                 continue;
             }
             boolean killed = body.main().call(() -> {

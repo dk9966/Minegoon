@@ -21,9 +21,21 @@ public final class Blocks {
     private Blocks() {
     }
 
-    /** The body can occupy this block. */
+    /**
+     * The body can occupy this block: nothing to bump into, or something it climbs
+     * inside or stands in, like a ladder, a snow layer, or a carpet. Small blocks
+     * such as cocoa pods and lanterns are in the way even though they are not solid.
+     */
     public static boolean passable(Material material) {
-        return material.isAir() || (!material.isSolid() && !HARMFUL.contains(material) && material != Material.BARRIER);
+        if (material.isAir()) {
+            return true;
+        }
+        if (HARMFUL.contains(material) || material == Material.BARRIER) {
+            return false;
+        }
+        return !material.isCollidable() || Tag.CLIMBABLE.isTagged(material) || material == Material.SNOW
+            || Tag.WOOL_CARPETS.isTagged(material) || material == Material.MOSS_CARPET
+            || material == Material.PALE_MOSS_CARPET;
     }
 
     public static boolean water(Material material) {

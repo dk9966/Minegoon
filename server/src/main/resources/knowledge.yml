@@ -1,0 +1,133 @@
+# Where things are and how to look for them.
+#
+# The helper sees every block and animal within render distance that nothing
+# else hides, so looking is free and happens after every move. The moves, tried
+# in the order listed:
+#
+#   cliff   walk to the foot of a bare rock face in sight
+#   peak    climb the highest ground in sight
+#   cave    walk down into the deepest cave opening in sight, again and again
+#   dig     stair down to the best height, then branch mine there
+#   roam    walk to the nearest listed biome in sight
+#   visit   walk to a listed structure in sight
+#
+# When the list runs out the helper walks toward ground it has not seen yet and
+# starts the list again, so it never runs out of places to look.
+#
+#   y       lowest and highest height it shows up at
+#   best    the height with the most of it
+#   biomes  where it is common, for roam
+#   visit   structures that have it, for visit
+#   trip    what to carry before going, from trips below
+#
+# Deepslate ores share the entry of their stone version.
+# Heights: https://minecraft.wiki/w/Ore (Java 1.18 and later)
+
+find:
+  coal_ore:     {y: [0, 320],   best: 45,  ways: [cliff, peak, cave, dig]}
+  copper_ore:   {y: [-16, 112], best: 43,  ways: [cliff, cave, dig], biomes: [dripstone_caves]}
+  iron_ore:     {y: [-64, 320], best: 14,  ways: [cliff, peak, cave, dig], trip: mine}
+  lapis_ore:    {y: [-64, 64],  best: -2,  ways: [cave, dig]}
+  gold_ore:     {y: [-64, 256], best: -18, ways: [roam, cave, dig], biomes: [badlands, eroded_badlands, wooded_badlands]}
+  redstone_ore: {y: [-64, 16],  best: -59, ways: [cave, dig], trip: deep}
+  diamond_ore:  {y: [-64, 16],  best: -59, ways: [cave, dig], trip: deep}
+  emerald_ore:
+    y: [-16, 320]
+    best: 85
+    ways: [roam, cliff, peak, dig]
+    biomes: [meadow, cherry_grove, grove, snowy_slopes, jagged_peaks, frozen_peaks, stony_peaks,
+             windswept_hills, windswept_gravelly_hills, windswept_forest]
+
+  stone:        {y: [-64, 320], best: 40, ways: [cliff, dig]}
+  deepslate:    {y: [-64, 8],   best: -8, ways: [cave, dig]}
+  granite:      {ways: [cliff, dig]}
+  diorite:      {ways: [cliff, dig]}
+  andesite:     {ways: [cliff, dig]}
+  tuff:         {y: [-64, 16], best: -20, ways: [cave, dig]}
+  calcite:      {ways: [roam, peak, cave], biomes: [stony_peaks]}
+  dripstone_block: {ways: [cave], biomes: [dripstone_caves]}
+  obsidian:     {y: [-64, 16], best: -54, ways: [visit, cave], visit: [ruined_portal]}
+  gravel:       {ways: [cliff, roam, cave], biomes: [windswept_gravelly_hills, stony_shore, river, ocean, deep_ocean]}
+  sand:         {ways: [roam], biomes: [beach, desert, river, snowy_beach, warm_ocean]}
+  red_sand:     {ways: [roam], biomes: [badlands, eroded_badlands, wooded_badlands]}
+  sandstone:    {ways: [roam], biomes: [desert, beach]}
+  red_sandstone: {ways: [roam], biomes: [badlands, eroded_badlands, wooded_badlands]}
+  clay:         {ways: [roam, cave], biomes: [river, swamp, lush_caves, beach]}
+  mud:          {ways: [roam], biomes: [mangrove_swamp]}
+  moss_block:   {ways: [cave], biomes: [lush_caves]}
+  snow_block:   {ways: [roam], biomes: [snowy_slopes, grove, frozen_peaks, jagged_peaks]}
+  dirt:         {ways: []}
+  grass_block:  {ways: []}
+
+  oak_log:      {ways: [roam], biomes: [forest, flower_forest, plains, swamp, wooded_badlands, savanna, windswept_forest, dark_forest]}
+  birch_log:    {ways: [roam], biomes: [birch_forest, old_growth_birch_forest, forest, meadow]}
+  spruce_log:   {ways: [roam], biomes: [taiga, snowy_taiga, old_growth_pine_taiga, old_growth_spruce_taiga, grove, windswept_forest]}
+  jungle_log:   {ways: [roam], biomes: [jungle, sparse_jungle, bamboo_jungle]}
+  acacia_log:   {ways: [roam], biomes: [savanna, savanna_plateau, windswept_savanna]}
+  dark_oak_log: {ways: [roam], biomes: [dark_forest]}
+  mangrove_log: {ways: [roam], biomes: [mangrove_swamp]}
+  cherry_log:   {ways: [roam], biomes: [cherry_grove]}
+  pale_oak_log: {ways: [roam], biomes: [pale_garden]}
+
+  wheat:        {ways: [visit, roam], visit: [village], biomes: [plains, sunflower_plains, savanna, desert, snowy_plains, taiga]}
+  carrots:      {ways: [visit], visit: [village]}
+  potatoes:     {ways: [visit], visit: [village]}
+  beetroots:    {ways: [visit], visit: [village]}
+  short_grass:  {ways: [roam], biomes: [plains, sunflower_plains, meadow, savanna, forest, taiga]}
+  sugar_cane:   {ways: [roam], biomes: [river, beach, swamp, desert, jungle]}
+  pumpkin:      {ways: [roam], biomes: [plains, sunflower_plains, taiga, snowy_plains, meadow]}
+  melon:        {ways: [roam], biomes: [jungle, sparse_jungle, bamboo_jungle]}
+  cactus:       {ways: [roam], biomes: [desert, badlands]}
+  bamboo:       {ways: [roam], biomes: [bamboo_jungle, jungle]}
+  cobweb:       {ways: [visit, cave, dig], best: 0, y: [-64, 64], visit: [mineshaft]}
+
+  water:        {ways: [roam], biomes: [river, ocean, lukewarm_ocean, cold_ocean, beach, swamp, mangrove_swamp]}
+  lava:         {y: [-64, 320], best: -55, ways: [cave, dig]}
+
+  cow:          {ways: [roam], biomes: [plains, sunflower_plains, meadow, forest, flower_forest, birch_forest, savanna, taiga, windswept_hills]}
+  pig:          {ways: [roam], biomes: [plains, sunflower_plains, forest, flower_forest, birch_forest, savanna, taiga]}
+  sheep:        {ways: [roam], biomes: [plains, sunflower_plains, meadow, windswept_hills, forest, taiga, savanna]}
+  chicken:      {ways: [roam], biomes: [plains, sunflower_plains, forest, flower_forest, birch_forest, savanna, taiga, jungle]}
+  rabbit:       {ways: [roam], biomes: [desert, flower_forest, taiga, snowy_plains, meadow, cherry_grove]}
+  spider:       {ways: [cave, roam], biomes: [plains, forest, taiga, desert]}
+  cave_spider:  {ways: [visit], visit: [mineshaft]}
+  skeleton:     {ways: [cave, roam], biomes: [plains, forest, taiga, desert]}
+  zombie:       {ways: [cave, roam], biomes: [plains, forest, taiga]}
+  soil:         {ways: [roam], biomes: [plains, sunflower_plains, forest, meadow, savanna, taiga]}
+
+# What to carry before a trip. "a|b" means either counts.
+trips:
+  # Stairs down to y=14 and a branch mine wear out a stone pickaxe on the way.
+  mine:
+    stone_pickaxe|iron_pickaxe|diamond_pickaxe: 2
+  # The stairs down to y=-59 are about 400 blocks of digging, more than one
+  # iron pickaxe lasts (250). Stone pickaxes (131 each) dig the way and the
+  # first tunnels; the iron one is kept for the ore. A trailing ? marks a
+  # supply made only when what is held already covers it.
+  deep:
+    stone_pickaxe: 4
+    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: 6
+    cobblestone|cobbled_deepslate: 32
+    stone_sword|iron_sword|diamond_sword: 1
+    shield: 1
+    iron_helmet|diamond_helmet|netherite_helmet: 1
+    iron_chestplate|diamond_chestplate|netherite_chestplate: 1
+    bow?: 1
+    arrow?: 16
+
+# How to tell a structure from blocks in sight. Each kind of mark block adds its
+# weight once; a structure counts as seen when the marks within 24 blocks of each
+# other add up to "need". Pick blocks that rarely appear anywhere else.
+structures:
+  village:        {need: 2, marks: {bell: 2, composter: 1, hay_block: 1, dirt_path: 1, lectern: 1, smoker: 1, blast_furnace: 1, cartography_table: 1, fletching_table: 1, loom: 1, smithing_table: 1}}
+  mineshaft:      {need: 2, marks: {rail: 1, cobweb: 1}}
+  dungeon:        {need: 2, marks: {spawner: 1, mossy_cobblestone: 1}}
+  ruined_portal:  {need: 2, marks: {crying_obsidian: 2, obsidian: 1, netherrack: 1}}
+  desert_pyramid: {need: 2, marks: {blue_terracotta: 2, chiseled_sandstone: 1, cut_sandstone: 1}}
+  jungle_pyramid: {need: 2, marks: {chiseled_stone_bricks: 1, tripwire_hook: 1, dispenser: 1, mossy_cobblestone: 1}}
+  igloo:          {need: 2, marks: {snow_block: 1, white_carpet: 1, redstone_torch: 1}}
+  ocean_monument: {need: 2, marks: {prismarine_bricks: 2, dark_prismarine: 2, sea_lantern: 1}}
+  stronghold:     {need: 2, marks: {end_portal_frame: 2, stone_bricks: 1, iron_bars: 1, cracked_stone_bricks: 1}}
+  ancient_city:   {need: 2, marks: {reinforced_deepslate: 2, sculk_shrieker: 1, deepslate_tiles: 1}}
+  trial_chambers: {need: 2, marks: {trial_spawner: 2, vault: 2, tuff_bricks: 1, chiseled_tuff: 1}}
+  trail_ruins:    {need: 2, marks: {suspicious_gravel: 1, mud_bricks: 1}}

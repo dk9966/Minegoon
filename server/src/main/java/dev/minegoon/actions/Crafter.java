@@ -195,7 +195,18 @@ public final class Crafter {
             }
             return null;
         });
-        return existing != null ? new Station(existing, false) : new Station(placer.placeBeside(type), true);
+        if (existing != null) {
+            return new Station(existing, false);
+        }
+        try {
+            return new Station(placer.placeBeside(type), true);
+        } catch (ActionFailed noRoom) {
+            Pos blocking = body.main().call(placer::blockInTheWay);
+            if (blocking == null || !miner.mine(blocking).confirmed()) {
+                throw noRoom;
+            }
+            return new Station(placer.placeBeside(type), true);
+        }
     }
 
     private void packUp(Station station) {

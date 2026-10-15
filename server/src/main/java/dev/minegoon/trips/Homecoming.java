@@ -23,6 +23,7 @@ import org.bukkit.util.Vector;
 public final class Homecoming {
 
     private static final double ARRIVED = 3;
+    private static final double CLOSE_ENOUGH = 8;
     private static final int MAX_LEGS = 6;
     private static final int PICKUP_DELAY = 20;
 
@@ -70,24 +71,47 @@ public final class Homecoming {
 
     /**
      * Walks to the player, following if they move, or to the fallback spot when
-     * they are away. Returns where it ended up handing things over.
+     * they are away. A spot it cannot stand next to, such as a treetop, is close
+     * enough from below. Returns where it ended up handing things over.
      */
     public Location goBack(UUID player, Location fallback) {
+        Location target = null;
         for (int leg = 0; leg < MAX_LEGS; leg++) {
-            Location target = body.main().call(() -> whereIs(player, fallback));
+            target = body.main().call(() -> whereIs(player, fallback));
             if (target == null) {
                 throw new ActionFailed("I can't find you in this world");
             }
             mover.walk(Goal.near(Pos.of(target), ARRIVED - 0.5), Checkpoint.NONE);
-            boolean arrived = body.main().call(() -> {
-                Location now = whereIs(player, fallback);
-                return now != null && body.player().getLocation().distance(now) <= ARRIVED;
-            });
-            if (arrived) {
+            if (within(player, fallback, ARRIVED)) {
                 return target;
             }
         }
+        if (body.main().call(() -> below(player, fallback))) {
+            return target;
+        }
         throw new ActionFailed("I couldn't find a way back");
+    }
+
+    /**
+     * Within {@link #CLOSE_ENOUGH} blocks sideways, at any height: under a
+     * treetop or a ledge it cannot climb to is close enough to hand things over.
+     */
+    private boolean below(UUID player, Location fallback) {
+        Location home = whereIs(player, fallback);
+        if (home == null) {
+            return false;
+        }
+        Location at = body.player().getLocation();
+        double dx = at.getX() - home.getX();
+        double dz = at.getZ() - home.getZ();
+        return dx * dx + dz * dz <= CLOSE_ENOUGH * CLOSE_ENOUGH;
+    }
+
+    private boolean within(UUID player, Location fallback, double distance) {
+        return body.main().call(() -> {
+            Location now = whereIs(player, fallback);
+            return now != null && body.player().getLocation().distance(now) <= distance;
+        });
     }
 
     private Location whereIs(UUID id, Location fallback) {

@@ -18,10 +18,13 @@ public sealed interface Step {
     /** The item whose count in the inventory shows the step's progress, or null. */
     ItemSet counted();
 
-    /** Mine blocks until {@code count} more of the item are in the inventory. */
-    record Gather(ItemSet item, Set<Material> blocks, int count) implements Step {
+    /**
+     * Mine blocks until {@code count} more of the item are in the inventory.
+     * Ripe crops are broken only when fully grown.
+     */
+    record Gather(ItemSet item, Set<Material> blocks, int count, boolean ripe) implements Step {
         public String describe() {
-            return "gather " + count + " " + item.name();
+            return (ripe ? "harvest " : "gather ") + count + " " + item.name();
         }
 
         public ItemSet counted() {
@@ -37,6 +40,61 @@ public sealed interface Step {
 
         public ItemSet counted() {
             return item;
+        }
+    }
+
+    /** Hoe, plant, bone-meal, and harvest. */
+    record Grow(ItemSet crop, Material seed, Material block, int count) implements Step {
+        public String describe() {
+            return "grow " + count + " " + crop.name();
+        }
+
+        public ItemSet counted() {
+            return crop;
+        }
+    }
+
+    /** Fill containers from a fluid in the world. */
+    record Fill(ItemSet item, Material container, Material fluid, int count) implements Step {
+        public String describe() {
+            return "fill " + count + " " + item.name();
+        }
+
+        public ItemSet counted() {
+            return item;
+        }
+    }
+
+    /** Hunt a passive animal and eat it. Done when the helper is no longer hungry. */
+    record Meal() implements Step {
+        public String describe() {
+            return "hunt for a meal";
+        }
+
+        public ItemSet counted() {
+            return null;
+        }
+    }
+
+    /** Place a bed and sleep through the night. */
+    record Sleep() implements Step {
+        public String describe() {
+            return "sleep until morning";
+        }
+
+        public ItemSet counted() {
+            return null;
+        }
+    }
+
+    /** Dig in and wait out the night, for a helper with nothing to fight with. */
+    record Shelter() implements Step {
+        public String describe() {
+            return "dig in until morning";
+        }
+
+        public ItemSet counted() {
+            return null;
         }
     }
 

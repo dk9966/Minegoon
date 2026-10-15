@@ -1,120 +1,120 @@
 package dev.minegoon;
 
-import dev.minegoon.actions.Body;
-import dev.minegoon.actions.Crafter;
-import dev.minegoon.actions.Miner;
-import dev.minegoon.actions.Mover;
-import dev.minegoon.actions.Pickup;
-import dev.minegoon.actions.Placer;
-import dev.minegoon.chat.AdminCommand;
 import dev.minegoon.chat.ChatListener;
-import dev.minegoon.chat.Commands;
-import dev.minegoon.jobs.Foreman;
-import dev.minegoon.jobs.Inspector;
-import dev.minegoon.jobs.JobBoard;
-import dev.minegoon.jobs.Results;
+import dev.minegoon.chat.LaneCommand;
+import dev.minegoon.knowledge.Knowledge;
+import dev.minegoon.knowledge.Lessons;
 import dev.minegoon.models.IntentParser;
 import dev.minegoon.models.OpenRouter;
-import dev.minegoon.models.Unstuck;
 import dev.minegoon.planner.Cookbook;
-import dev.minegoon.planner.Planner;
-import dev.minegoon.safety.BreakGuard;
-import dev.minegoon.safety.BreakPolicy;
-import dev.minegoon.safety.Zones;
-import dev.minegoon.spawn.Helper;
-import dev.minegoon.trips.Gatherer;
-import dev.minegoon.trips.Homecoming;
-import dev.minegoon.trips.Reflexes;
-import dev.minegoon.trips.Retreat;
+import dev.minegoon.trips.Prospector;
+import dev.minegoon.world.Names;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.logging.Level;
+import org.bukkit.Bukkit;
+import org.bukkit.WorldCreator;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.TabExecutor;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class MinegoonPlugin extends JavaPlugin {
 
-    private Database db;
-    private Helper helper;
-    private Foreman foreman;
+    private final List<Session> sessions = new ArrayList<>();
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         Settings settings = Settings.from(getConfig());
-        Path folder = getDataFolder().toPath();
+        MainThread main = new MainThread(this);
+        Cookbook cookbook = Cookbook.load();
+        getLogger().info("Cookbook knows a survival way to get " + cookbook.knownItems() + " items.");
+        OpenRouter router = new OpenRouter(settings.apiKey(), settings.fallbackModel());
+        Knowledge knowledge = readKnowledge();
+        Lessons lessons = new Lessons(getDataFolder().toPath().resolve("lessons.json"));
+        getLogger().info("Knowledge loaded; " + lessons.size() + " lessons learned so far.");
+        Session.Shared shared = new Session.Shared(settings, main, router, cookbook, knowledge, lessons);
+
         try {
-            db = new Database(folder.resolve("minegoon.db"));
+            if (settings.lanes().isEmpty()) {
+                String world = getServer().getWorlds().getFirst().getName();
+                sessions.add(Session.open(this, shared, world, settings.helperName(), false));
+            } else {
+                for (String lane : settings.lanes()) {
+                    if (!loadLane(lane)) {
+                        getServer().getPluginManager().disablePlugin(this);
+                        return;
+                    }
+                    String helper = settings.helperName() + "-" + lane.substring(lane.lastIndexOf('_') + 1);
+                    sessions.add(Session.open(this, shared, lane, helper, true));
+                }
+            }
         } catch (SQLException e) {
             getLogger().log(Level.SEVERE, "Could not open the database", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
 
-        MainThread main = new MainThread(this);
-        Zones zones = new Zones(db);
-        BreakPolicy policy = new BreakPolicy(db, zones);
-        helper = new Helper(this, settings.helperName());
-        Body body = new Body(main, helper, policy);
-
-        Miner miner = new Miner(body);
-        Mover mover = new Mover(body, miner);
-        Pickup pickup = new Pickup(body, mover);
-        Retreat retreat = new Retreat(main, helper);
-        Foreman.Crew crew = new Foreman.Crew(
-            new Gatherer(body, mover, miner, pickup, retreat, settings.scanRadius()),
-            new Crafter(body, miner, new Placer(body), pickup),
-            new Homecoming(body, mover, pickup),
-            retreat);
-
-        Cookbook cookbook = Cookbook.load();
-        getLogger().info("Cookbook knows a survival way to get " + cookbook.knownItems() + " items.");
-        OpenRouter router = new OpenRouter(settings.apiKey(), settings.fallbackModel());
-        Results results = new Results(folder.resolve("results.jsonl"));
-        foreman = new Foreman(body, new JobBoard(db), new Inspector(main, helper), new Planner(cookbook), crew,
-            new Unstuck(router, settings.unstuckModel(), getLogger()), zones, results, db, getLogger());
-        helper.onDeath(foreman::onDeath);
-
-        Commands commands = new Commands(helper, foreman, zones);
         IntentParser parser = new IntentParser(router, settings.parseModel(), settings.helperName());
-        var plugins = getServer().getPluginManager();
-        plugins.registerEvents(helper, this);
-        plugins.registerEvents(new ChatListener(main, helper, commands, parser, getLogger()), this);
-        plugins.registerEvents(new BreakGuard(helper, policy, results::guardCaught, getLogger()), this);
-        AdminCommand admin = new AdminCommand(helper, commands, foreman, settings.lab());
+        getServer().getPluginManager().registerEvents(new ChatListener(main, sessions, parser, getLogger()), this);
         PluginCommand command = Objects.requireNonNull(getCommand("minegoon"));
-        command.setExecutor(admin);
-        command.setTabCompleter(admin);
+        command.setExecutor(executor(settings));
+        command.setTabCompleter(executor(settings));
 
-        Reflexes reflexes = new Reflexes(helper);
-        getServer().getScheduler().runTask(this, () -> {
-            helper.spawn();
-            foreman.resumeAfterRestart();
-        });
-        getServer().getScheduler().runTaskTimer(this, () -> {
-            helper.tick();
-            reflexes.tick();
-        }, 1, 1);
+        getServer().getScheduler().runTaskTimer(this, () -> sessions.forEach(Session::tick), 1, 1);
         if (!router.enabled()) {
-            getLogger().info("No OpenRouter key set: free-text chat is off, ! commands still work.");
+            getLogger().info("No OpenRouter key set: only direct commands are read, and the helper decides without a model.");
         }
     }
 
     @Override
     public void onDisable() {
-        if (foreman != null) {
-            foreman.shutdown();
+        sessions.forEach(Session::shutdown);
+        sessions.clear();
+    }
+
+    private Knowledge readKnowledge() {
+        try (Reader yaml = new InputStreamReader(Objects.requireNonNull(getResource("knowledge.yml")),
+                StandardCharsets.UTF_8)) {
+            Knowledge knowledge = Knowledge.read(yaml);
+            knowledge.problems(Names::biome, name -> Names.thing(name) || name.equals(Prospector.SOIL))
+                .forEach(problem -> getLogger().warning("knowledge.yml: " + problem));
+            return knowledge;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not read knowledge.yml", e);
         }
-        if (helper != null) {
-            helper.despawn();
+    }
+
+    private boolean loadLane(String lane) {
+        if (!Session.saved(lane)) {
+            getLogger().severe("Lane world is missing: " + lane);
+            return false;
         }
-        if (db != null) {
-            try {
-                db.close();
-            } catch (SQLException e) {
-                getLogger().log(Level.WARNING, "Could not close the database", e);
-            }
+        if (Bukkit.getWorld(lane) == null && Bukkit.createWorld(WorldCreator.name(lane)) == null) {
+            getLogger().severe("Could not load lane world " + lane);
+            return false;
         }
+        return true;
+    }
+
+    private TabExecutor executor(Settings settings) {
+        if (settings.lanes().isEmpty()) {
+            return sessions.getFirst().admin();
+        }
+        Map<String, Session> lanes = new LinkedHashMap<>();
+        for (Session session : sessions) {
+            lanes.put(session.worldName(), session);
+        }
+        return new LaneCommand(lanes);
     }
 }

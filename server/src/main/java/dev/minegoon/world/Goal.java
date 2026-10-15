@@ -1,5 +1,7 @@
 package dev.minegoon.world;
 
+import dev.minegoon.world.path.Costs;
+
 /** Where a walk should end. Positions are the feet block of the body. */
 public interface Goal {
 
@@ -8,7 +10,7 @@ public interface Goal {
 
     boolean reached(BlockReader world, Pos feet);
 
-    /** Rough cost to finish from here, in the same ticks the pathfinder counts. */
+    /** Rough cost to finish from here, in the same ticks the route search counts. */
     double estimate(Pos feet);
 
     /** The point the search aims its world snapshot at. */
@@ -23,12 +25,34 @@ public interface Goal {
 
             @Override
             public double estimate(Pos feet) {
-                return Pathfinder.estimate(feet, target);
+                return Costs.estimate(feet, target);
             }
 
             @Override
             public Pos focus() {
                 return target;
+            }
+        };
+    }
+
+    /** Within {@code range} of a column at any height. {@code surface} is where the search looks. */
+    static Goal column(Pos surface, double range) {
+        return new Goal() {
+            @Override
+            public boolean reached(BlockReader world, Pos feet) {
+                double dx = feet.x() - surface.x();
+                double dz = feet.z() - surface.z();
+                return dx * dx + dz * dz <= range * range;
+            }
+
+            @Override
+            public double estimate(Pos feet) {
+                return Costs.estimate(feet, new Pos(surface.x(), feet.y(), surface.z()));
+            }
+
+            @Override
+            public Pos focus() {
+                return surface;
             }
         };
     }
@@ -41,29 +65,17 @@ public interface Goal {
                 double ex = feet.x() + 0.5;
                 double ey = feet.y() + EYE_HEIGHT;
                 double ez = feet.z() + 0.5;
-                double dx = block.x() + 0.5 - ex;
-                double dy = block.y() + 0.5 - ey;
-                double dz = block.z() + 0.5 - ez;
-                double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                return distance <= REACH && clearSight(world, ex, ey, ez, dx, dy, dz, distance);
-            }
-
-            private boolean clearSight(BlockReader world, double ex, double ey, double ez,
-                                       double dx, double dy, double dz, double distance) {
-                for (double t = 0.2; t < distance; t += 0.2) {
-                    int x = (int) Math.floor(ex + dx * t / distance);
-                    int y = (int) Math.floor(ey + dy * t / distance);
-                    int z = (int) Math.floor(ez + dz * t / distance);
-                    if ((x != block.x() || y != block.y() || z != block.z()) && !Blocks.passable(world.type(x, y, z))) {
-                        return false;
-                    }
-                }
-                return true;
+                double tx = block.x() + 0.5;
+                double ty = block.y() + 0.5;
+                double tz = block.z() + 0.5;
+                double distance = Math.sqrt((tx - ex) * (tx - ex) + (ty - ey) * (ty - ey) + (tz - ez) * (tz - ez));
+                return distance <= REACH
+                    && Sight.clearIgnoring(world, ex, ey, ez, tx, ty, tz, block.x(), block.y(), block.z());
             }
 
             @Override
             public double estimate(Pos feet) {
-                return Pathfinder.estimate(feet, block);
+                return Costs.estimate(feet, block);
             }
 
             @Override
@@ -83,7 +95,7 @@ public interface Goal {
 
             @Override
             public double estimate(Pos feet) {
-                return Math.max(0, distance - progress(feet)) * Pathfinder.WALK;
+                return Math.max(0, distance - progress(feet)) * Costs.SPRINT;
             }
 
             @Override

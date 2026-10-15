@@ -10,6 +10,14 @@ public record Pos(int x, int y, int z) {
         return new Pos(location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
+    /**
+     * The feet block of a body at this location. A little slack makes standing on
+     * farmland or a path, which are not quite a full block tall, count as on top.
+     */
+    public static Pos standing(Location at) {
+        return new Pos(at.getBlockX(), (int) Math.floor(at.getY() + 0.2), at.getBlockZ());
+    }
+
     public static Pos of(Block block) {
         return new Pos(block.getX(), block.getY(), block.getZ());
     }
@@ -38,7 +46,8 @@ public record Pos(int x, int y, int z) {
         return Math.abs(x - other.x) + Math.abs(y - other.y) + Math.abs(z - other.z);
     }
 
-    long key() {
+    /** Packs the position into one long, for maps keyed by position. */
+    public long key() {
         return ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
     }
 

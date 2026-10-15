@@ -3,91 +3,240 @@ package dev.minegoon.trips;
 import dev.minegoon.MainThread;
 import dev.minegoon.actions.Checkpoint;
 import dev.minegoon.spawn.Helper;
+import java.util.EnumSet;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
+import org.bukkit.Material;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.Damageable;
 
 /**
- * The rules for when a trip should end early and the helper should come home.
- * Trips call {@link #check()} between moves; it throws {@link Needed}.
+ * The rules trips check between moves. Most trouble is handled on the spot:
+ * anything attacking gets fought, low health is waited out while eating, and a
+ * full inventory drops its junk. What needs other work first is thrown as
+ * {@link Needed}: no food left, no room even after dropping junk, or the last
+ * tool for the job about to break.
  */
 public final class Retreat implements Checkpoint {
 
     private static final double LOW_HEALTH = 10;
-    private static final long LOW_HEALTH_GRACE_MS = 5_000;
+    private static final double HEALED = 16;
+    static final int REGENERATES_AT = 18;
+    private static final int HEAL_SECONDS = 90;
     private static final int HUNGRY = 6;
+    private static final int MEAL = 10;
     private static final double WORN = 0.05;
+    private static final int NEVER = 32767;
+    private static final Set<Material> JUNK = EnumSet.of(
+        Material.DIRT, Material.GRAVEL, Material.GRANITE, Material.DIORITE, Material.ANDESITE, Material.TUFF,
+        Material.CALCITE, Material.DRIPSTONE_BLOCK, Material.POINTED_DRIPSTONE, Material.NETHERRACK,
+        Material.ROTTEN_FLESH, Material.POISONOUS_POTATO, Material.SPIDER_EYE);
+
+    public enum Reason { HUNGRY, FULL, TOOL }
+
+    public static final class Needed extends RuntimeException {
+        private final Reason reason;
+
+        public Needed(Reason reason, String message) {
+            super(message);
+            this.reason = reason;
+        }
+
+        public Reason reason() {
+            return reason;
+        }
+    }
 
     private final MainThread main;
     private final Helper helper;
-    private long lowHealthSince;
+    private final Fighter fighter;
+    private volatile Set<Material> keep = Set.of();
+    private volatile boolean spendingLastTool;
 
-    public Retreat(MainThread main, Helper helper) {
+    public Retreat(MainThread main, Helper helper, Fighter fighter) {
         this.main = main;
         this.helper = helper;
+        this.fighter = fighter;
     }
 
-    public static final class Needed extends RuntimeException {
-        public Needed(String reason) {
-            super(reason);
-        }
+    /** Items the current work needs, so they are never dropped as junk. */
+    public void keep(Set<Material> items) {
+        keep = Set.copyOf(items);
     }
 
     @Override
     public void check() {
-        String reason = main.call(this::reason);
-        if (reason != null) {
-            throw new Needed(reason);
-        }
+        steady(false);
     }
 
-    /** Also retreats when every tool that passes {@code needed} is about to break. */
-    public Checkpoint guarding(Predicate<ItemStack> needed) {
-        return () -> {
-            check();
-            if (main.call(() -> lastToolWorn(helper.player(), needed))) {
-                throw new Needed("my last tool for this is about to break");
+    /** Hunger does not end this trip. Used while the helper is out getting food. */
+    public Checkpoint ignoringHunger() {
+        return () -> steady(true);
+    }
+
+    /** While a replacement is being made, the worn tool may be used to the end to make it. */
+    public void spendLastTool(boolean spending) {
+        spendingLastTool = spending;
+    }
+
+    /**
+     * Also stops when every tool that passes {@code needed} is about to break, or
+     * the last one broke. A worn tool's last uses still go on targets already in
+     * sight; it is replaced when there are none left to spend them on. Work that
+     * needs no tool, such as logs, never stops for one.
+     */
+    public Checkpoint guarding(Predicate<ItemStack> needed, BooleanSupplier targetInSight) {
+        return new Checkpoint() {
+            private boolean hadTool;
+
+            @Override
+            public void check() {
+                steady(false);
+                if (spendingLastTool) {
+                    return;
+                }
+                Tools tools = main.call(() -> tools(helper.player(), needed));
+                hadTool |= tools != Tools.NONE;
+                if (tools == Tools.NONE && hadTool || tools == Tools.WORN && !targetInSight.getAsBoolean()) {
+                    throw new Needed(Reason.TOOL, "my last tool for this is about to break");
+                }
             }
         };
     }
 
-    private String reason() {
-        Player player = helper.player();
-        if (player == null || player.isDead()) {
-            return null;
-        }
-        long now = System.currentTimeMillis();
-        if (player.getHealth() >= LOW_HEALTH) {
-            lowHealthSince = 0;
-        } else if (lowHealthSince == 0) {
-            lowHealthSince = now;
-        } else if (now - lowHealthSince > LOW_HEALTH_GRACE_MS) {
-            lowHealthSince = 0;
-            return "my health stayed low";
-        }
-        if (player.getFoodLevel() <= HUNGRY && !Food.any(player)) {
-            return "I ran out of food";
-        }
-        if (player.getInventory().firstEmpty() == -1) {
-            return "my inventory is full";
-        }
-        return null;
+    /** The helper should go get food before the trip falls over. */
+    public boolean needsMeal() {
+        return main.call(() -> {
+            Player player = helper.player();
+            return player != null && !player.isDead() && player.getFoodLevel() <= MEAL && !Food.any(player);
+        });
     }
 
-    private static boolean lastToolWorn(Player player, Predicate<ItemStack> needed) {
-        boolean any = false;
-        for (ItemStack stack : player.getInventory().getStorageContents()) {
-            if (stack == null || !needed.test(stack)) {
-                continue;
+    /**
+     * When every tool that passes {@code needed} is nearly broken, the material
+     * of the best one, so a replacement can be crafted. Null if any of them is fine,
+     * or if the helper has none.
+     */
+    public Material wornTool(Predicate<ItemStack> needed) {
+        return main.call(() -> {
+            Player player = helper.player();
+            if (player == null) {
+                return null;
             }
-            any = true;
-            int max = stack.getType().getMaxDurability();
-            int damage = stack.getItemMeta() instanceof Damageable meta ? meta.getDamage() : 0;
-            if (max == 0 || max - damage > max * WORN) {
-                return false;
+            Material best = null;
+            boolean healthy = false;
+            for (ItemStack stack : player.getInventory().getStorageContents()) {
+                if (stack == null || !needed.test(stack)) {
+                    continue;
+                }
+                if (!worn(stack)) {
+                    healthy = true;
+                } else if (best == null || stack.getType().getMaxDurability() > best.getMaxDurability()) {
+                    best = stack.getType();
+                }
+            }
+            return healthy ? null : best;
+        });
+    }
+
+    private void steady(boolean hungerIsFine) {
+        fighter.defend();
+        heal(hungerIsFine);
+        if (!hungerIsFine && main.call(this::starving)) {
+            throw new Needed(Reason.HUNGRY, "I ran out of food");
+        }
+        if (main.call(this::stillFull)) {
+            throw new Needed(Reason.FULL, "my inventory is full of things I need");
+        }
+    }
+
+    /** Waits for health to come back, fighting off anything that comes and eating to keep it coming. */
+    private void heal(boolean hungerIsFine) {
+        if (main.call(() -> health() >= LOW_HEALTH)) {
+            return;
+        }
+        helper.say("I'm hurt, so I'll stop and heal.");
+        for (int second = 0; second < HEAL_SECONDS; second++) {
+            fighter.defend();
+            switch (main.call(this::mend)) {
+                case HEALED -> {
+                    return;
+                }
+                case STARVING -> {
+                    if (!hungerIsFine) {
+                        throw new Needed(Reason.HUNGRY, "I'm hurt and have nothing to eat");
+                    }
+                }
+                case HEALING -> {
+                }
+            }
+            main.sleep(20);
+        }
+    }
+
+    private enum Mend { HEALED, HEALING, STARVING }
+
+    /** Health only comes back on a nearly full food bar, so keep eating while waiting. */
+    private Mend mend() {
+        Player player = helper.player();
+        if (player == null || player.isDead() || player.getHealth() >= HEALED) {
+            return Mend.HEALED;
+        }
+        boolean fed = Reflexes.eat(player, 20) || player.getFoodLevel() >= REGENERATES_AT;
+        return fed ? Mend.HEALING : Mend.STARVING;
+    }
+
+    private double health() {
+        Player player = helper.player();
+        return player == null || player.isDead() ? Double.MAX_VALUE : player.getHealth();
+    }
+
+    private boolean starving() {
+        Player player = helper.player();
+        return player != null && !player.isDead() && player.getFoodLevel() <= HUNGRY && !Food.any(player);
+    }
+
+    /** Drops junk when the inventory is full. True when that did not free a slot. */
+    private boolean stillFull() {
+        Player player = helper.player();
+        if (player == null || player.isDead() || player.getInventory().firstEmpty() != -1) {
+            return false;
+        }
+        PlayerInventory inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getStorageContents().length; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack != null && JUNK.contains(stack.getType()) && !keep.contains(stack.getType())) {
+                inventory.setItem(slot, null);
+                Item dropped = player.getWorld().dropItem(player.getEyeLocation(), stack);
+                dropped.setPickupDelay(NEVER);
             }
         }
-        return any;
+        return inventory.firstEmpty() == -1;
+    }
+
+    /** No tool that passes {@code needed} is in good shape: they are all worn, or there are none. */
+    private enum Tools { HEALTHY, WORN, NONE }
+
+    private static Tools tools(Player player, Predicate<ItemStack> needed) {
+        Tools held = Tools.NONE;
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            if (stack != null && needed.test(stack)) {
+                if (!worn(stack)) {
+                    return Tools.HEALTHY;
+                }
+                held = Tools.WORN;
+            }
+        }
+        return held;
+    }
+
+    private static boolean worn(ItemStack stack) {
+        int max = stack.getType().getMaxDurability();
+        int damage = stack.getItemMeta() instanceof Damageable meta ? meta.getDamage() : 0;
+        return max > 0 && max - damage <= max * WORN;
     }
 }

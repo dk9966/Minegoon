@@ -35,11 +35,34 @@ public final class Inspector {
         return switch (job.step()) {
             case Step.Gather gather -> have(gather.item()) >= start + gather.count();
             case Step.Hunt hunt -> have(hunt.item()) >= start + hunt.count();
+            case Step.Grow grow -> have(grow.crop()) >= start + grow.count();
+            case Step.Fill fill -> have(fill.item()) >= start + fill.count();
             case Step.Craft craft -> have(craft.output()) >= start + craft.times() * craft.yield();
             case Step.Smelt smelt -> have(smelt.output()) >= start + smelt.count();
             case Step.Deliver deliver -> have(deliver.item()) <= start - deliver.count();
+            case Step.Meal meal -> fed();
+            case Step.Sleep sleep -> !night();
+            case Step.Shelter shelter -> !night();
             case Step.Recover recover -> System.currentTimeMillis() > recover.until() || nothingLeft(recover);
         };
+    }
+
+    private boolean fed() {
+        return main.call(() -> {
+            Player player = helper.player();
+            return player != null && player.getFoodLevel() >= 15;
+        });
+    }
+
+    private boolean night() {
+        return main.call(() -> {
+            Player player = helper.player();
+            if (player == null) {
+                return false;
+            }
+            long time = player.getWorld().getTime() % 24000;
+            return time >= 12542 && time <= 23459;
+        });
     }
 
     /** How many of the item the helper holds right now. */
