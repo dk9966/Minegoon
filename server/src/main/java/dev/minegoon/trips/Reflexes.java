@@ -21,10 +21,10 @@ import org.bukkit.inventory.PlayerInventory;
 
 /**
  * What the helper does on its own every tick, whatever job it is on: empty a
- * water bucket under itself before a fall lands, climb out of lava, eat when
- * hungry, and hit monsters that come close. Eating uses the off hand so the
- * tool in the main hand stays put. Eating and hitting wait while a real fight
- * has the body; falls and lava do not. Main thread only.
+ * water bucket under itself before a fall lands, get out of lava or off a
+ * magma block, eat when hungry, and hit monsters that come close. Eating uses
+ * the off hand so the tool in the main hand stays put. Eating and hitting wait
+ * while a real fight has the body; falls and burns do not. Main thread only.
  */
 public final class Reflexes {
 
@@ -53,8 +53,8 @@ public final class Reflexes {
             poured = null;
             return;
         }
-        if (player.isInLava()) {
-            escapeLava(player);
+        if (player.isInLava() || FakePlayer.grounded(player) && Blocks.harmful(FakePlayer.under(player).getType())) {
+            escape(player);
             return;
         }
         if (player.getTicksLived() % DRESS_EVERY == 0) {
@@ -127,8 +127,8 @@ public final class Reflexes {
         return true;
     }
 
-    /** Swims up and toward the nearest column with solid, lava-free footing. */
-    private void escapeLava(Player player) {
+    /** Swims or jumps toward the nearest column with solid footing that does not burn. */
+    private void escape(Player player) {
         Location at = player.getLocation();
         World world = player.getWorld();
         int y = at.getBlockY();

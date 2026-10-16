@@ -45,6 +45,8 @@ find:
   andesite:     {ways: [cliff, dig]}
   tuff:         {y: [-64, 16], best: -20, ways: [cave, dig]}
   calcite:      {ways: [roam, peak, cave], biomes: [stony_peaks]}
+  # Geodes are hidden in stone, but most have a crack, and caves and ravines cut through them.
+  amethyst_cluster: {y: [-58, 30], best: -14, ways: [visit, cave, dig], visit: [geode]}
   dripstone_block: {ways: [cave], biomes: [dripstone_caves]}
   obsidian:     {y: [-64, 16], best: -54, ways: [visit, cave], visit: [ruined_portal]}
   gravel:       {ways: [cliff, roam, cave], biomes: [windswept_gravelly_hills, stony_shore, river, ocean, deep_ocean]}
@@ -95,15 +97,16 @@ find:
   zombie:       {ways: [cave, roam], biomes: [plains, forest, taiga]}
   soil:         {ways: [roam], biomes: [plains, sunflower_plains, forest, meadow, savanna, taiga]}
 
-# What to carry before a trip. "a|b" means either counts.
+# What to carry before a trip. "a|b" means either counts. A trailing ? marks a
+# supply made only when what is held already covers it.
 trips:
-  # Stairs down to y=14 and a branch mine wear out a stone pickaxe on the way.
+  # Stairs down to y=14 and a branch mine can wear out a stone pickaxe, but most
+  # iron is found well above that, and a broken pickaxe is replaced anyway.
   mine:
-    stone_pickaxe|iron_pickaxe|diamond_pickaxe: 2
+    stone_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
   # The stairs down to y=-59 are about 400 blocks of digging, more than one
   # iron pickaxe lasts (250). Stone pickaxes (131 each) dig the way and the
-  # first tunnels; the iron one is kept for the ore. A trailing ? marks a
-  # supply made only when what is held already covers it.
+  # first tunnels; the iron one is kept for the ore.
   deep:
     stone_pickaxe: 4
     cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: 6
@@ -131,3 +134,4 @@ structures:
   ancient_city:   {need: 2, marks: {reinforced_deepslate: 2, sculk_shrieker: 1, deepslate_tiles: 1}}
   trial_chambers: {need: 2, marks: {trial_spawner: 2, vault: 2, tuff_bricks: 1, chiseled_tuff: 1}}
   trail_ruins:    {need: 2, marks: {suspicious_gravel: 1, mud_bricks: 1}}
+  geode:          {need: 2, marks: {smooth_basalt: 1, calcite: 1}}

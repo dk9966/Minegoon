@@ -25,16 +25,21 @@ public final class Homecoming {
     private static final double ARRIVED = 3;
     private static final double CLOSE_ENOUGH = 8;
     private static final int MAX_LEGS = 6;
+    private static final int CLIMB = 32;
     private static final int PICKUP_DELAY = 20;
 
     private final Body body;
     private final Mover mover;
+    private final Tunneler tunneler;
     private final Pickup pickup;
+    private final Checkpoint homeward;
 
-    public Homecoming(Body body, Mover mover, Pickup pickup) {
+    public Homecoming(Body body, Mover mover, Tunneler tunneler, Pickup pickup, Checkpoint homeward) {
         this.body = body;
         this.mover = mover;
+        this.tunneler = tunneler;
         this.pickup = pickup;
+        this.homeward = homeward;
     }
 
     /**
@@ -71,25 +76,46 @@ public final class Homecoming {
 
     /**
      * Walks to the player, following if they move, or to the fallback spot when
-     * they are away. A spot it cannot stand next to, such as a treetop, is close
-     * enough from below. Returns where it ended up handing things over.
+     * they are away. From deep below, where no walk finds a way, it climbs stairs
+     * toward them a stretch at a time. A spot it cannot stand next to, such as a
+     * treetop, is close enough from below. Returns where it ended up handing things over.
      */
     public Location goBack(UUID player, Location fallback) {
         Location target = null;
-        for (int leg = 0; leg < MAX_LEGS; leg++) {
+        int legs = 0;
+        while (legs < MAX_LEGS) {
             target = body.main().call(() -> whereIs(player, fallback));
             if (target == null) {
                 throw new ActionFailed("I can't find you in this world");
             }
-            mover.walk(Goal.near(Pos.of(target), ARRIVED - 0.5), Checkpoint.NONE);
+            boolean walked = mover.walk(Goal.near(Pos.of(target), ARRIVED - 0.5), homeward);
             if (within(player, fallback, ARRIVED)) {
                 return target;
+            }
+            if (walked || !climbToward(Pos.of(target))) {
+                legs++;
             }
         }
         if (body.main().call(() -> below(player, fallback))) {
             return target;
         }
         throw new ActionFailed("I couldn't find a way back");
+    }
+
+    /** Stairs up toward a spot higher than the helper, along whichever way it lies most. False when no higher. */
+    private boolean climbToward(Pos target) {
+        Pos feet = mover.feet();
+        if (feet.y() >= target.y()) {
+            return false;
+        }
+        int dx = target.x() - feet.x();
+        int dz = target.z() - feet.z();
+        if (Math.abs(dx) >= Math.abs(dz)) {
+            tunneler.face(dx, 0);
+        } else {
+            tunneler.face(0, dz);
+        }
+        return tunneler.up(target.y(), CLIMB, homeward);
     }
 
     /**

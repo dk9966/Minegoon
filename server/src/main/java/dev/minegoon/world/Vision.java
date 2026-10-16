@@ -257,13 +257,14 @@ public final class Vision {
     public record Candidate(WorldView view, Pos pos) {
     }
 
-    /** Living things of these kinds in sight, nearest first. Grown-ups only. */
-    public List<UUID> creatures(Set<EntityType> kinds, int limit) {
+    /** Living things of these kinds in sight that pass {@code wanted}, nearest first. Grown-ups only. */
+    public List<UUID> creatures(Set<EntityType> kinds, Predicate<Entity> wanted, int limit) {
         return main.call(() -> {
             Player self = player.get();
             Location at = self.getLocation();
             return self.getWorld().getNearbyEntities(at, radius, radius, radius).stream()
                 .filter(entity -> kinds.contains(entity.getType()) && entity instanceof LivingEntity && !entity.isDead())
+                .filter(wanted)
                 .filter(entity -> !(entity instanceof Ageable ageable) || ageable.isAdult())
                 .filter(self::hasLineOfSight)
                 .sorted(Comparator.comparingDouble(entity -> entity.getLocation().distanceSquared(at)))

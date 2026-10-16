@@ -36,7 +36,7 @@ public final class Miner {
         while (progress < 1) {
             double shown = progress;
             int tick = ticks;
-            float speed = body.main().call(() -> hit(pos, target, shown, tick));
+            float speed = body.main().tick(() -> hit(pos, target, shown, tick));
             if (speed < 0) {
                 return Receipt.refused(action, "the block changed while mining");
             }

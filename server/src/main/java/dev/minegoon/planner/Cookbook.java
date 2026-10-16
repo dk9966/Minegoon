@@ -322,7 +322,8 @@ public final class Cookbook {
         };
     }
 
-    private static boolean hostile(Set<EntityType> mobs) {
+    /** Monsters: a sword to fight them, and they keep to the dark. */
+    public static boolean hostile(Set<EntityType> mobs) {
         return mobs.stream().anyMatch(type -> {
             Class<? extends Entity> kind = type.getEntityClass();
             return kind != null && Enemy.class.isAssignableFrom(kind);

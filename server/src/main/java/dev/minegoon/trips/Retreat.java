@@ -78,6 +78,14 @@ public final class Retreat implements Checkpoint {
         return () -> steady(true);
     }
 
+    /** Fights and heals, but needs nothing: on the way home the trip is over. */
+    public Checkpoint homeward() {
+        return () -> {
+            fighter.defend();
+            heal(true);
+        };
+    }
+
     /** While a replacement is being made, the worn tool may be used to the end to make it. */
     public void spendLastTool(boolean spending) {
         spendingLastTool = spending;

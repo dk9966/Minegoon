@@ -8,6 +8,7 @@ import dev.minegoon.actions.Body;
 import dev.minegoon.actions.Crafter;
 import dev.minegoon.actions.Hands;
 import dev.minegoon.models.Advisor;
+import dev.minegoon.planner.Cookbook;
 import dev.minegoon.planner.Planner;
 import dev.minegoon.safety.Zones;
 import dev.minegoon.trips.Farmer;
@@ -57,7 +58,6 @@ public final class Foreman {
                        Filler filler, Sleeper sleeper, Fighter fighter, Prospector prospector) {
     }
 
-    private static final int CONSULT_EVERY = 6;
     private static final int SETTLE_AFTER = 4;
     private static final int SETTLE_TICKS = 20;
     private static final long RECOVER_WINDOW_MS = 4 * 60_000;
@@ -385,8 +385,8 @@ public final class Foreman {
             return true;
         }
         List<Step> bed = provision(ItemSet.of(Material.WHITE_BED), 1);
-        if (bed == null) {
-            say("It's night, and I can't make a bed from here, so I'll keep going.");
+        if (bed == null || bed.stream().anyMatch(Foreman::inTheWorld)) {
+            say("It's night, and I can't make a bed from what I have, so I'll keep going.");
             return false;
         }
         bed.add(new Step.Sleep());
@@ -599,17 +599,23 @@ public final class Foreman {
     /**
      * Records a failure and picks the next try: the same job again, a plan from
      * what is held now, or another way to get the item. A search that came up
-     * {@code dry}, or a job that keeps failing, may also get advice first.
+     * {@code dry} may get advice first; advice is about where to look, so it
+     * cannot help any other failure. Things lying where the helper died are left
+     * once it cannot get there, and a craft or smelt that failed is planned again
+     * at once, since trying it again with the same inventory fails the same way.
      * Returns false only when no plan exists at all.
      */
     private boolean failed(Task task, Job job, String problem, boolean dry) {
         int attempts = board.fail(job, problem);
         db.log(task.id(), "failed", job.step().describe() + ": " + problem);
+        if (job.step() instanceof Step.Recover) {
+            board.complete(job);
+            db.log(task.id(), "retry", "left the dropped items");
+            return replan(task.id(), task.avoid());
+        }
         String subject = crew.prospector().subject(job.step());
         if (dry) {
             tutor.missed(subject);
-        }
-        if (dry || attempts % CONSULT_EVERY == 0) {
             Optional<String> advice = tutor.consult(subject, problem, () -> board.countModelCall(task.id()));
             advice.ifPresent(note -> {
                 db.log(task.id(), "lesson", subject + ": " + note);
@@ -626,16 +632,19 @@ public final class Foreman {
         otherWay.addAll(Planner.waysBehind(job.step()));
         if (dry && !otherWay.equals(task.avoid())) {
             try {
-                plan(task.id(), otherWay);
-                db.log(task.id(), "retry", "another way: " + problem);
-                say("I'll get that another way.");
-                board.carryAttempts(task.id(), job.step(), attempts, problem);
-                return true;
+                List<Step> steps = steps(task.id(), otherWay);
+                if (crew.sleeper().night() || steps.stream().noneMatch(Foreman::huntsMonsters)) {
+                    adopt(task.id(), otherWay, steps);
+                    db.log(task.id(), "retry", "another way: " + problem);
+                    say("I'll get that another way.");
+                    board.carryAttempts(task.id(), job.step(), attempts, problem);
+                    return true;
+                }
             } catch (Planner.Unplannable onlyWay) {
                 // Keep looking the one way there is.
             }
         }
-        if (attempts % 2 == 0) {
+        if (attempts % 2 == 0 || job.step() instanceof Step.Craft || job.step() instanceof Step.Smelt) {
             db.log(task.id(), "retry", "replan from the inventory");
             if (!replan(task.id(), task.avoid())) {
                 return false;
@@ -671,8 +680,15 @@ public final class Foreman {
 
     /** Saves a plan that leaves out {@code avoid}. Nothing is saved when there is none. */
     private void plan(long taskId, Set<String> avoid) throws Planner.Unplannable {
+        adopt(taskId, avoid, steps(taskId, avoid));
+    }
+
+    private List<Step> steps(long taskId, Set<String> avoid) throws Planner.Unplannable {
         Task task = board.task(taskId).orElseThrow();
-        List<Step> steps = planner.plan(task.goalItems(), task.count(), body.main().call(this::inventory), avoid);
+        return planner.plan(task.goalItems(), task.count(), body.main().call(this::inventory), avoid);
+    }
+
+    private void adopt(long taskId, Set<String> avoid, List<Step> steps) {
         board.setAvoid(taskId, avoid);
         board.replaceUnfinished(taskId, steps);
         db.log(taskId, "plan", steps.stream().map(Step::describe).collect(Collectors.joining("; ")));
@@ -778,6 +794,11 @@ public final class Foreman {
             }
         }
         return items;
+    }
+
+    /** By day, monsters are in caves, not on the ground being searched: no easier than what came up dry. */
+    private static boolean huntsMonsters(Step step) {
+        return step instanceof Step.Hunt hunt && Cookbook.hostile(hunt.mobs());
     }
 
     /** Work out in the world rather than at a crafting table or furnace. */

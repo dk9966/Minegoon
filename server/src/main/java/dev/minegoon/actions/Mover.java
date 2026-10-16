@@ -142,11 +142,11 @@ public final class Mover {
 
     /** The feet block. A body bobbing just under the surface counts as swimming at it. Main thread. */
     private Pos located(Player player) {
-        Pos feet = Pos.standing(player.getLocation());
-        if (!player.isInWater()) {
-            return feet;
-        }
         BlockReader live = body.live();
+        if (!player.isInWater()) {
+            return Footing.of(player, live);
+        }
+        Pos feet = Pos.standing(player.getLocation());
         Pos above = feet.offset(0, 1, 0);
         int over = traits(live, above.offset(0, 1, 0));
         boolean bobbing = has(traits(live, feet), WATER) && has(traits(live, above), WATER)
@@ -157,7 +157,7 @@ public final class Mover {
     /** Waits for the body to come to rest on ground, in water, or on a ladder, falling the way anyone falls. */
     public Pos settle() {
         for (int tick = 0; tick < SETTLE_TICKS; tick++) {
-            Pos feet = body.main().call(() -> {
+            Pos feet = body.main().tick(() -> {
                 Player player = body.player();
                 boolean settled = FakePlayer.grounded(player) || player.isInWater() || FakePlayer.climbing(player);
                 return settled ? located(player) : null;
@@ -216,7 +216,7 @@ public final class Mover {
     private void surface(Checkpoint checkpoint) {
         for (int tick = 0; tick < SURFACE_TICKS; tick++) {
             checkpoint.check();
-            Pos above = body.main().call(() -> {
+            Pos above = body.main().tick(() -> {
                 Player player = body.player();
                 if (!player.isUnderWater()) {
                     return null;

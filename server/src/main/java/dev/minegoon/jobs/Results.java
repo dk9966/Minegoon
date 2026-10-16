@@ -39,8 +39,8 @@ public final class Results {
         append(line);
     }
 
-    /** One practice walk: where from and to, where it ended, and how many ticks it took. */
-    public record Trek(boolean reached, String from, String to, String end, double blocks, long ticks) {
+    /** One practice walk: where from and to, where it ended (null if it died), and how many ticks it took. */
+    public record Trek(boolean reached, boolean died, String from, String to, String end, double blocks, long ticks) {
     }
 
     public void trek(Trek trek) {

@@ -21,9 +21,6 @@ import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import org.bukkit.Material;
 import org.bukkit.Tag;
-import org.bukkit.entity.Enemy;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
 
 /**
  * Turns "5 diamond" into an ordered list of steps. It works backwards from the
@@ -198,7 +195,7 @@ public final class Planner {
                     stock.add(mine.output(), amount);
                 }
                 case Hunt hunt -> {
-                    if (hostile(hunt.mobs())) {
+                    if (Cookbook.hostile(hunt.mobs())) {
                         ensure(SWORDS, next);
                     }
                     add("hunt", hunt.output(), amount, count -> new Step.Hunt(hunt.output(), hunt.mobs(), count));
@@ -238,13 +235,6 @@ public final class Planner {
                     stock.add(smelt.output(), amount);
                 }
             }
-        }
-
-        private static boolean hostile(Set<EntityType> mobs) {
-            return mobs.stream().anyMatch(type -> {
-                Class<? extends Entity> kind = type.getEntityClass();
-                return kind != null && Enemy.class.isAssignableFrom(kind);
-            });
         }
 
         /** Coal already on hand goes first; otherwise planks, which every forest has. */

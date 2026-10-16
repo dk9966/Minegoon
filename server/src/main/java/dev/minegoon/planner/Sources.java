@@ -58,6 +58,7 @@ public final class Sources {
         mined(Material.CLAY_BALL, Material.CLAY);
         mined(Material.FLINT, Material.GRAVEL);
         mined(Material.MELON_SLICE, Material.MELON);
+        mined(Material.AMETHYST_SHARD, Material.AMETHYST_CLUSTER);
         for (Material self : EnumSet.of(Material.SAND, Material.RED_SAND, Material.GRAVEL, Material.GRANITE,
                 Material.DIORITE, Material.ANDESITE, Material.TUFF, Material.CALCITE, Material.SANDSTONE,
                 Material.RED_SANDSTONE, Material.OBSIDIAN, Material.PUMPKIN, Material.SUGAR_CANE, Material.CACTUS,

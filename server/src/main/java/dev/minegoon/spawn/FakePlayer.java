@@ -140,6 +140,15 @@ public final class FakePlayer {
         return handle(player).onGround();
     }
 
+    /**
+     * The block holding the body up, which may be beside the feet when it stands
+     * on an edge. That is the block whose touch it feels, like a magma block's burn.
+     */
+    public static Block under(Player player) {
+        BlockPos on = handle(player).getOnPos();
+        return player.getWorld().getBlockAt(on.getX(), on.getY(), on.getZ());
+    }
+
     /** On a ladder, vine or scaffolding. */
     public static boolean climbing(Player player) {
         return handle(player).onClimbable();

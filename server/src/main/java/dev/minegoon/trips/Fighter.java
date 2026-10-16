@@ -117,7 +117,7 @@ public final class Fighter {
         engaged = true;
         try {
             int approaches = 0;
-            for (Beat beat = body.main().call(duel::tick); beat != Beat.OVER; beat = body.main().call(duel::tick)) {
+            for (Beat beat = body.main().tick(duel::tick); beat != Beat.OVER; beat = body.main().tick(duel::tick)) {
                 if (beat == Beat.CLOSE_IN && (++approaches > APPROACHES || !closeIn(duel))) {
                     break;
                 }

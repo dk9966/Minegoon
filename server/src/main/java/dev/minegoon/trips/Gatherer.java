@@ -26,9 +26,12 @@ import java.util.function.Predicate;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Sheep;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -124,7 +127,7 @@ public final class Gatherer {
                 body.main().sleep(BITE_TICKS);
                 continue;
             }
-            List<UUID> prey = vision.creatures(MEALS, 1);
+            List<UUID> prey = vision.creatures(MEALS, entity -> true, 1);
             if (prey.isEmpty()) {
                 search.next(checkpoint);
                 continue;
@@ -148,7 +151,7 @@ public final class Gatherer {
         Prospector.Search search = prospector.search(step);
         while (count(step.item()) < target) {
             retreat.check();
-            List<UUID> prey = vision.creatures(step.mobs(), 1);
+            List<UUID> prey = vision.creatures(step.mobs(), dropping(step.item()), 1);
             if (prey.isEmpty()) {
                 search.next(retreat);
                 continue;
@@ -160,6 +163,13 @@ public final class Gatherer {
                 pickup.collect(fell, 5, retreat);
             }
         }
+    }
+
+    /** A sheep drops wool of its own colour only, and none once sheared. */
+    private static Predicate<Entity> dropping(ItemSet items) {
+        boolean wool = items.members().stream().anyMatch(Tag.WOOL::isTagged);
+        return entity -> !wool || !(entity instanceof Sheep sheep)
+            || !sheep.isSheared() && items.contains(Material.matchMaterial(sheep.getColor().name() + "_WOOL"));
     }
 
     /** How many matching blocks are in sight from here, capped at the search limit. */

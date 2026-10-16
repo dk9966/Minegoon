@@ -7,6 +7,7 @@ import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.entity.Enemy;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -67,9 +68,9 @@ public final class Helper implements Listener {
         world.setClearWeatherDuration(20 * 60 * 60);
     }
 
-    /** Removes mobs and loose items in this world. Players stay. */
+    /** Removes hostile mobs in this world. Animals stay: once gone, they hardly ever come back. */
     public void clearMobs() {
-        world().getEntities().stream().filter(entity -> !(entity instanceof Player)).forEach(Entity::remove);
+        world().getEntities().stream().filter(Enemy.class::isInstance).forEach(Entity::remove);
     }
 
     public Location spawnPoint() {

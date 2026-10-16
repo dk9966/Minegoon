@@ -47,7 +47,8 @@ public final class PathExecutor {
     private static final double OFF_ROUTE_FAR = 3;
     private static final int STEP_SLACK = 100;
     private static final int MAX_DIGS = 12;
-    private static final double CENTERED = 0.3;
+    /** Closer than this to the centre, the 0.6-wide body is wholly inside its column, so nothing beside it catches it going up or down. */
+    private static final double CENTERED = 0.15;
     private static final double ARRIVED = 0.1;
     /** Closer than this to a centre it must stop on, the body creeps so it does not overshoot. */
     private static final double SLOW_DOWN = 0.6;
@@ -116,7 +117,7 @@ public final class PathExecutor {
         Runnable pending = nearEnd;
         int sinceCheck = 0;
         while (true) {
-            switch (body.main().call(run::tick)) {
+            switch (body.main().tick(run::tick)) {
                 case Go go -> {
                 }
                 case Dig dig -> {
@@ -154,7 +155,10 @@ public final class PathExecutor {
         private final List<Step> steps;
         private final double[] after;
         private int index;
+        /** Only a step never reached before starts a new clock, so a body slipping back and forth cannot go on forever. */
+        private int furthest;
         private int stepTicks;
+        private int routeTicks;
         private int offRoute;
         private int digs;
         boolean advanced;
@@ -176,6 +180,7 @@ public final class PathExecutor {
             Location at = player.getLocation();
             Pos feet = feet(at, player);
             advanced = false;
+            routeTicks++;
             if (sync(feet)) {
                 offRoute = 0;
             } else if (++offRoute > OFF_ROUTE_TICKS || away(at) > OFF_ROUTE_FAR) {
@@ -188,7 +193,7 @@ public final class PathExecutor {
                 }
             }
             Step step = steps.get(index);
-            if (++stepTicks > step.cost() + STEP_SLACK) {
+            if (++stepTicks > steps.get(furthest).cost() + STEP_SLACK) {
                 return new Failed("too long on " + step + ", " + state(player));
             }
             Order prepared = prepare(step, feet, at, player);
@@ -201,10 +206,13 @@ public final class PathExecutor {
 
         /** The feet block. A swimming body bobs below the surface it swims along, so one block low still counts. */
         private Pos feet(Location at, Player player) {
+            if (!player.isInWater()) {
+                return Footing.of(player, body.live());
+            }
             Pos feet = Pos.standing(at);
             Pos above = feet.offset(0, 1, 0);
             Step step = steps.get(index);
-            return player.isInWater() && !step.allows(feet) && step.allows(above) ? above : feet;
+            return !step.allows(feet) && step.allows(above) ? above : feet;
         }
 
         /** Where the body is and what is around it, for a give-up message someone can act on. */
@@ -214,11 +222,12 @@ public final class PathExecutor {
             BlockReader live = body.live();
             Pos to = step.to();
             Vector velocity = player.getVelocity();
-            return String.format("body at %.2f %.2f %.2f facing %.0f moving %.2f %.2f %.2f%s%s%s, to %s/%s over %s",
+            return String.format("body at %.2f %.2f %.2f facing %.0f moving %.2f %.2f %.2f%s%s%s, to %s/%s over %s,"
+                    + " %d ticks on the step and %d on the route",
                 at.getX(), at.getY(), at.getZ(), at.getYaw(), velocity.getX(), velocity.getY(), velocity.getZ(),
                 FakePlayer.grounded(player) ? " grounded" : "", player.isInWater() ? " wet" : "",
                 FakePlayer.climbing(player) ? " climbing" : "", name(live, to), name(live, to.offset(0, 1, 0)),
-                name(live, to.offset(0, -1, 0)));
+                name(live, to.offset(0, -1, 0)), stepTicks, routeTicks);
         }
 
         /** Finds the step the body is on, a few back or ahead of the last one. */
@@ -242,10 +251,13 @@ public final class PathExecutor {
         }
 
         private void moveTo(int step) {
-            advanced |= step > index;
+            if (step > furthest) {
+                furthest = step;
+                stepTicks = 0;
+                digs = 0;
+                advanced = true;
+            }
             index = step;
-            stepTicks = 0;
-            digs = 0;
         }
 
         private Step next(int i) {
@@ -265,12 +277,18 @@ public final class PathExecutor {
             return !needsCentre(next) || offCentre(step.to(), at) <= CENTERED;
         }
 
-        /** Digs what is in the way and places a missing floor, while the body stands at the step's start. */
+        /**
+         * Digs what is in the way and places a missing floor, while the body stands
+         * at the step's start. Sand or gravel can fall back into a cell already dug,
+         * under a body that has moved on along the step, so that is dug again from
+         * wherever the body stands.
+         */
         private Order prepare(Step step, Pos feet, Location at, Player player) {
-            if (!feet.equals(step.from())) {
+            boolean atStart = feet.equals(step.from());
+            if (!atStart && !FakePlayer.grounded(player)) {
                 return null;
             }
-            if (step.move() == Move.DOWNWARD && offCentre(step.from(), at) > CENTERED) {
+            if (atStart && step.move() == Move.DOWNWARD && offCentre(step.from(), at) > CENTERED) {
                 return null;
             }
             BlockReader live = body.live();
@@ -286,7 +304,7 @@ public final class PathExecutor {
                 return new Dig(cell);
             }
             Pos floor = step.floor();
-            if (floor != null && step.move() != Move.PILLAR && missingFloor(live, step, floor)) {
+            if (atStart && floor != null && step.move() != Move.PILLAR && missingFloor(live, step, floor)) {
                 if (!FakePlayer.grounded(player)) {
                     return GO;
                 }
@@ -314,11 +332,11 @@ public final class PathExecutor {
                 case ASCEND -> jump |= (grounded || FakePlayer.climbing(player)) && distance < ASCEND_JUMP;
                 case PARKOUR -> {
                     sprint = true;
-                    jump = grounded && along(step, at) >= TAKE_OFF;
+                    jump |= grounded && along(step, at) >= TAKE_OFF;
                 }
                 case PILLAR -> {
                     forward = grounded && distance > CENTERED ? CREEP : 0;
-                    jump = forward == 0 && grounded;
+                    jump |= forward == 0 && grounded;
                     Pos cell = step.from();
                     if (!grounded && at.getY() >= cell.y() + PILLAR_PLACE && has(traits(body.live(), cell), REPLACEABLE)) {
                         placer.placeAt(cell);
@@ -328,10 +346,12 @@ public final class PathExecutor {
                     forward = distance > CENTERED ? CREEP : 0;
                     jump = true;
                 }
-                case CLIMB_DOWN, DOWNWARD -> forward = distance > CENTERED ? CREEP : 0;
+                // On a ladder or vine, pressing into anything climbs up instead.
+                case CLIMB_DOWN, DOWNWARD -> forward = distance > CENTERED && !FakePlayer.climbing(player) ? CREEP : 0;
             }
-            boolean hold = FakePlayer.climbing(player) && step.move().horizontal() && step.to().y() >= step.from().y()
-                && !jump;
+            // Sneaking keeps a hanging body on the vine, but on the ground it also stops the body at the edge it is leaving.
+            boolean hold = !grounded && FakePlayer.climbing(player) && step.move().horizontal()
+                && step.to().y() >= step.from().y() && !jump;
             return new Controls(forward, 0, jump, sprint && !hold, hold);
         }
 

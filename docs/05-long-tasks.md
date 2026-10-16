@@ -36,7 +36,7 @@ So the suite does this instead:
 - Run **one** Paper server. Three trips share that process. Each trip gets its own copy of the fresh world (`run_a`, `run_b`, `run_c`) and its own helper (`Builder-a`, and so on). The heap is 2.5 GB, with a hard 4 GB cap so a stuck server cannot eat the machine.
 - The server's own overworld is a flat pad nobody plays on. The nether and the end are off. The trips never go there.
 - Before every trip, unload that one world, put the fresh copy back, and load it again. The other two trips keep going. Copying the world is small. Restarting Paper was the slow part, and a trip no longer waits on it.
-- Set the time to morning, clear the weather, and clear mobs already standing around before the trip starts. Mobs that wander up during the trip are part of the trip.
+- Set the time to morning, clear the weather, and clear hostile mobs already standing around before the trip starts. Animals stay, since they hardly ever respawn. Mobs that wander up during the trip are part of the trip.
 
 The same world copy is kept for later iterations, so a better score is the helper changing, not a kinder seed. Every lane copies that one world, so they share its spawn. A fresh world does not move the player back, so before each trip the helper is moved to its start spot.
 
@@ -248,3 +248,56 @@ What each pass showed, and the fix:
 - **Steps that never finish.** Some step-ups, pillars and swims run out of time with the body pressed at the edge of the next block. A replan usually gets round it. The cause is not found.
 - **Amethyst.** Planned correctly now, but geodes are hidden in stone, and the helper does not dig toward what it cannot see.
 - **Trek on lane b** ended twice with no position recorded, after the helper died in the ocean. That run's result is the harness reporting a death badly, not a walk.
+
+### Passes 14 to 21: real game speed
+
+The short version: passes 11 to 13 were flattering. The helper's walking, mining and fighting loops ran as fast as the worker thread could hand work to the server, up to three a tick, so it mined about three times faster than a player can. Pass 14 put every loop on one real game tick. Mining is now exactly vanilla speed, every per-step time limit costs three times the real time it did, and the gathering scores fell. The passes after that fixed what real speed exposed, which was mostly jungle: vines, canopies, giant trees. Scores from before pass 14 are not comparable with scores after it.
+
+| Task | Pass 13 | Pass 14 | Pass 20 (1 repeat) |
+|---|---|---|---|
+| stone | 3/3 | 1/3 | 1/1 |
+| coal | 2/3 | 0/3 | 1/1 |
+| iron | 2/3 | 0/3 | 0/1, died to a creeper walking home with the iron |
+| cow | 2/3 | 2/3 | 0/1, stuck on a vine |
+| sheep | 0/3 | 1/3 | 0/1 |
+| water | 3/3 | 3/3 | 1/1 |
+| diamonds | 0/3 | 0/3 | 1/1, in 842s |
+| the five spars | 14/15 | 13/15 | 5/5 |
+| bedrock (refused) | 3/3 | 3/3 | 1/1 |
+| amethyst | 0/3 | 0/3 | 0/1 |
+| trek, climb, pit, ravine, gap | 14/15 | 14/15 | 4/5, the pit was carved in a treetop |
+| **all** | **45/57** | **37/57** | **14/19** |
+
+Passes 18, 19 and 21 were small checks of single fixes. Pass 21 (iron, cow and the four built courses) got 5 of 6: iron brought its 3 raw iron back, and the only miss was cow on a vine. Pass 22, the full three-repeat check, ran while the machine was busy (load average about 35, with a game client and a video call open). The server stopped answering and the run is not a result.
+
+What changed, and why:
+
+- **One loop, one tick.** `MainThread.tick` waits for the next server tick; walking, mining, fighting and settling all use it. A measured mine now takes as many ticks as the game says it should.
+- **Feet from what holds the body up** (`actions/Footing.java`). A body resting on the edge of a block, or holding on at the top of a vine, used to get a feet cell with no moves out of it, so every walk failed at once.
+- **The step clock only restarts on progress.** A body slipping back and forth between two steps reset the "too long on this step" clock and the dig limit every time, so one walk could hang for six minutes without a word. Now only a step never reached before gets a fresh clock.
+- **Vines.** Sneaking to hold on is only for a body hanging in the air; on the ground it pinned the body at the edge of a leaf block. A climb down presses nothing while on a vine, because in vanilla pressing into anything on a vine climbs up. A body counts as centred only within 0.15 of the middle, so its 0.6-wide box is inside its own column and no block beside it catches its head on a climb.
+- **Sand and gravel refill a dug cell.** The executor digs a cell again from wherever the body stands, not only from the step's start.
+- **Canopies are not "buried".** The search for new ground measured depth from the highest block, which in a jungle is leaves, so it tunnelled through trees. It now measures from the first block that is not leaves or logs.
+- **Getting out from deep down.** When every walk out fails, the search for new ground and the walk home cut stairs up toward the surface or home.
+- **Magma.** "Discovered the floor was lava" is the magma block's death message. The reflex that climbs out of lava now also steps off any burning block the body rests on, using the game's own "block under me", which can be beside the feet.
+- **The walk home fights and heals.** It used no checkpoint at all, so a creeper met on the way back was never fought. It now fights and heals, but nothing it lacks, like food, stops it.
+- **Fewer side trips.** A failed recovery of dropped items is given up instead of retried. A craft or smelt that is missing something replans at once. The "another way" switch does not swap a task for one that hunts monsters, unless it is night. A bed at night is made only from what the helper holds. The model is asked only when a search found nothing. The spare pickaxe for a mining trip is made only from what the helper holds, which in a jungle saved four minutes of chopping.
+- **Harness.** Each result records the real code revision, including uncommitted changes. A lane reset is retried once. A death on a trek is reported as one. The helper respawns where the trip started. `REPEATS=n` sets the number of repeats. The built courses are carved into the ground under the start, not into a treetop.
+
+### Still broken after pass 21
+
+- **No clean full pass at real speed.** The next full skills pass, on an idle machine, is the real score for all of the above.
+- **Vines are still the most common stall.** Pass 21's cow run stuck on a vine climb before the centring change; that change has not had a pass yet.
+- **Server-thread database writes.** Stopping a task writes its status to SQLite on the server thread. On a busy machine that write blocked the server for over 10 seconds.
+- **Sheep, amethyst, and diamonds** are being worked on separately.
+
+### After pass 13: moves pass 8 and skills pass 30
+
+Two chats worked on these at the same time. This one took movement, the harness and sheep. The other took diamonds and amethyst.
+
+- **A trek that ends in death** is now reported as `died`, with one death and "died on the way to ...". Before, it showed no position.
+- **Clearing mobs killed the animals.** Building the template ran `kill @e[type=!player]`, and every lane reset removed every entity that was not a player. Sheep and cows hardly ever respawn, so lane a's spawn area had none left. Now only hostile mobs are cleared (Bukkit's `Enemy`). The template's `.ready` file holds a version string, so a template made the old way is rebuilt from the same seed.
+- **Wet pillars** (pass 13's pit r2) are fixed: moves pass 8 had no step that timed out at a block edge. The one ASCEND that never jumped could not be rebuilt by hand. A one-block dug stair, with stone over the step, over the start, and in a one-wide tunnel, climbed every time.
+- **Hanging on to vines while standing.** On a step onto a vine cell, the "hold on" key is the sneak key, and sneaking stops the body at the edge of the block it stands on. Jungle runs stalled with the body 0.30 into the next block, five timeouts in a row. Holding on now waits until the body is off the ground.
+- **Moves pass 8:** trek 2/3 (one death in the ocean), climb 3/3, pit 2/3, ravine 3/3, gap 3/3.
+- **Skills pass 30** (fresh template, animals kept): sheep 1/3, cow 2/3. The jungle start no longer gets stuck between giant trunks. It now walks, but the vine stalls above made it slow. Lane b's sheep run still found none from 4 places. That search lives in `Prospector`.

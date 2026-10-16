@@ -94,6 +94,8 @@ public final class Session {
 
     private Database db;
     private Helper helper;
+    /** The server tick of the helper's last death. */
+    private volatile int diedAt = Integer.MIN_VALUE;
     private Prospector prospector;
     private Mover mover;
     private Retreat retreat;
@@ -268,12 +270,20 @@ public final class Session {
         Goal goal = y != null ? Goal.near(target, 1.5) : Goal.column(target, 1.5);
         foreman.drill("goto", () -> {
             Pos from = mover.feet();
-            int began = main.call(Bukkit::getCurrentTick);
-            boolean reached = mover.walk(goal, retreat);
-            Pos end = mover.feet();
-            int ticks = main.call(Bukkit::getCurrentTick) - began;
+            int began = Bukkit.getCurrentTick();
             double blocks = Math.hypot(target.x() - from.x(), target.z() - from.z());
-            results.trek(new Results.Trek(reached, from.toString(), target.toString(), end.toString(), blocks, ticks));
+            boolean reached = false;
+            try {
+                reached = mover.walk(goal, retreat);
+            } finally {
+                // A stopped walk leaves the thread interrupted, which would also stop the write.
+                Thread.interrupted();
+                boolean died = diedAt >= began;
+                String end = died ? null : mover.feet().toString();
+                int ended = died ? diedAt : Bukkit.getCurrentTick();
+                results.trek(new Results.Trek(reached, died, from.toString(), target.toString(), end, blocks,
+                    ended - began));
+            }
         });
         sender.sendMessage("Going to " + target + ".");
     }
@@ -346,14 +356,14 @@ public final class Session {
         Pickup pickup = new Pickup(body, mover);
         Vision vision = new Vision(main, helper::player, Bukkit.getViewDistance() * 16);
         Structures structures = new Structures(vision, knowledge.structures(), folder.resolve("structures.json"), log);
-        prospector = new Prospector(knowledge, shared.lessons(), mover, vision, structures,
-            new Tunneler(mover, vision), helperName, log);
+        Tunneler tunneler = new Tunneler(body, mover, vision);
+        prospector = new Prospector(knowledge, shared.lessons(), mover, vision, structures, tunneler, helperName, log);
         fighter = new Fighter(body, mover);
         retreat = new Retreat(main, helper, fighter);
         Foreman.Crew crew = new Foreman.Crew(
             new Gatherer(body, mover, miner, pickup, retreat, vision, prospector),
             new Crafter(body, miner, placer, pickup),
-            new Homecoming(body, mover, pickup),
+            new Homecoming(body, mover, tunneler, pickup, retreat.homeward()),
             retreat,
             new Farmer(body, mover, miner, pickup, retreat, vision, prospector),
             new Filler(body, mover, retreat, vision, prospector),
@@ -367,7 +377,10 @@ public final class Session {
         results = new Results(folder.resolve("results.jsonl"));
         foreman = new Foreman(body, new JobBoard(db), new Inspector(main, helper), new Planner(shared.cookbook()),
             crew, tutor, zones, results, db, log);
-        helper.onDeath(foreman::onDeath);
+        helper.onDeath(spot -> {
+            diedAt = Bukkit.getCurrentTick();
+            foreman.onDeath(spot);
+        });
 
         watch = new Watch(plugin, helper);
         peek = new Peek(plugin, helper);

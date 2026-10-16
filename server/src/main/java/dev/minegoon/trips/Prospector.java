@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.entity.EntityType;
 
 /**
@@ -242,8 +244,11 @@ public final class Prospector {
             return walkToFirst(openings, checkpoint);
         }
 
-        /** Stairs down to the best height, then tunnels there. */
+        /** Stairs down to the best height, then tunnels there. Not by hand. */
         private boolean dig(Checkpoint checkpoint) {
+            if (!tunneler.armed()) {
+                return false;
+            }
             int best = find.best() != null ? find.best() : mover.feet().y();
             if (mover.feet().y() > best) {
                 return tunneler.down(best, STAIRS, checkpoint);
@@ -289,13 +294,16 @@ public final class Prospector {
 
     /**
      * Toward the compass direction with the most ground not yet looked at,
-     * keeping the last heading when it is as good. Underground, or when no walk
-     * gets there, a tunnel that way: rock is never a dead end.
+     * keeping the last heading when it is as good. Underground with a pickaxe, a
+     * tunnel. When no walk gets anywhere, stairs up to the surface, then a tunnel
+     * that way: rock is never a dead end. Not {@link Dry}: the thing may be out
+     * there, the helper just cannot move, and nobody's advice changes that.
      */
     private void frontier(Checkpoint checkpoint) {
         Pos feet = mover.feet();
-        WorldView view = vision.around();
-        if (view.highest(feet.x(), feet.z()) - feet.y() > BURIED) {
+        int surface = ground(vision.around(), feet.x(), feet.z()) + 1;
+        boolean buried = surface - feet.y() > BURIED;
+        if (buried && tunneler.armed()) {
             tunneler.turn();
             if (tunneler.ahead(FRONTIER, checkpoint)) {
                 return;
@@ -316,6 +324,10 @@ public final class Prospector {
                 return;
             }
         }
+        if (buried && tunneler.up(surface, surface - feet.y(), checkpoint)) {
+            remember();
+            return;
+        }
         for (int direction : order) {
             int[] step = COMPASS[direction];
             if (tunneler.toward(step[0], step[1], FRONTIER, checkpoint)) {
@@ -324,7 +336,20 @@ public final class Prospector {
                 return;
             }
         }
-        throw new Dry("I can't find a way out of here to new ground");
+        throw new ActionFailed("I can't find a way out of here to new ground");
+    }
+
+    /** The top block of the ground in a column. Under a canopy of leaves and logs the helper is not buried. */
+    private static int ground(WorldView view, int x, int z) {
+        int y = view.highest(x, z);
+        while (y > view.minY() && !earth(view.type(x, y, z))) {
+            y--;
+        }
+        return y;
+    }
+
+    private static boolean earth(Material type) {
+        return type.isSolid() && !Tag.LEAVES.isTagged(type) && !Tag.LOGS.isTagged(type);
     }
 
     /** Chunks in a direction, out past what is in sight now, that the helper has not looked at. */

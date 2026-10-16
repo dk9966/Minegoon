@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import atexit
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -28,11 +29,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LAB = ROOT / "infra" / "lab"
 TEMPLATE = LAB / "template"
+# Written once the template world is saved. A template from older code, which killed its animals, fails the check.
+TEMPLATE_READY = "seed minegoon, animals kept\n"
 COMPOSE = ROOT / "infra" / "docker-compose.lab.yml"
 MAIN_COMPOSE = ROOT / "infra" / "docker-compose.yml"
 RESULTS = ROOT / "scripts" / "results" / "long-tasks"
 HELPER = "Builder"
-REPEATS = 3
+REPEATS = int(os.environ.get("REPEATS", "3"))
+# What a trip's behavior depends on, for telling runs apart.
+CODE = ("server", "scripts")
 CONTAINER = "minegoon-lab"
 LANES = ("run_a", "run_b", "run_c")
 # Applied only when the suite server starts. The template boot leaves these unset
@@ -133,11 +138,21 @@ def say(message: str) -> None:
         print(message, flush=True)
 
 
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+
+
 def git_rev() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True
-    )
-    return result.stdout.strip() or "unknown"
+    """The commit, plus a short hash of uncommitted code so two dirty runs can be told apart."""
+    head = git("rev-parse", "--short", "HEAD") or "unknown"
+    changes = git("diff", "HEAD", "--", *CODE)
+    untracked = git("ls-files", "--others", "--exclude-standard", "--", *CODE).splitlines()
+    if not changes and not untracked:
+        return head
+    digest = hashlib.sha1(changes.encode())
+    for name in untracked:
+        digest.update((ROOT / name).read_bytes())
+    return f"{head}+{digest.hexdigest()[:8]}"
 
 
 def take_lock() -> None:
@@ -479,28 +494,25 @@ def stop_server(name: str, data: Path, extra: dict[str, str] | None = None) -> N
     compose(name, data, "stop", extra=extra)
 
 
-def prepare_template(name: str, clear_mobs: bool) -> None:
+def prepare_template(name: str) -> None:
     reset = rcon(name, "minegoon", "reset")
     if reset.returncode != 0:
         raise RuntimeError(clean(reset.stdout or reset.stderr) or "reset failed")
     rcon(name, "time", "set", "day")
     rcon(name, "weather", "clear")
-    if clear_mobs:
-        rcon(name, "kill", "@e[type=!player]")
-        time.sleep(1)
-        check = rcon(name, "data", "get", "entity", HELPER, "Health")
-        if check.returncode != 0:
-            raise RuntimeError("Clearing mobs removed the helper. Stopping.")
 
 
-def prepare_lane(lane: Lane, clear_mobs: bool) -> None:
-    args = ["minegoon", "lane", lane.name, "reset"]
-    if clear_mobs:
-        args.append("clear")
-    reset = rcon(CONTAINER, *args)
-    text = clean(reset.stdout or reset.stderr)
-    if reset.returncode != 0 or "reset to spawn" not in text:
-        raise RuntimeError(text or "reset failed")
+def prepare_lane(lane: Lane) -> None:
+    args = ["minegoon", "lane", lane.name, "reset", "clear"]
+    for tries_left in (1, 0):
+        reset = rcon(CONTAINER, *args)
+        text = clean(reset.stdout or reset.stderr)
+        if reset.returncode == 0 and "reset to spawn" in text:
+            return
+        if tries_left:
+            say(f"[{lane.helper.removeprefix(HELPER + '-')}] reset failed ({text or 'no reply'}), once more")
+            time.sleep(5)
+    raise RuntimeError(text or "reset failed")
 
 
 def hand_kit(lane: Lane, task: Task) -> None:
@@ -518,6 +530,8 @@ def move_to(lane: Lane, spot: tuple[int, int]) -> None:
     text = clean(moved.stdout or moved.stderr)
     if moved.returncode != 0 or "Spread" not in text:
         raise RuntimeError(text or "spreadplayers failed")
+    # Respawn where the trip starts, as a player's bed would be, not at world spawn far off.
+    in_lane(lane, "execute", "as", lane.helper, "at", "@s", "run", "spawnpoint", "@s", "~", "~", "~")
     time.sleep(3)
 
 
@@ -535,11 +549,29 @@ def fill(lane: Lane, x1: int, y1: int, z1: int, x2: int, y2: int, z2: int, block
         raise RuntimeError(text or "fill failed")
 
 
+def ground(lane: Lane, x: int, y: int, z: int) -> int:
+    """The height to stand at in this column: on top of the first block under
+    the feet that is not part of a tree or a plant."""
+    for floor in range(y - 1, y - 48, -1):
+        cell = (str(x), str(floor), str(z))
+        test = rcon(CONTAINER, "execute", "in", f"minecraft:{lane.name}",
+                    "unless", "block", *cell, "#minecraft:leaves",
+                    "unless", "block", *cell, "#minecraft:logs",
+                    "unless", "block", *cell, "#minecraft:replaceable")
+        if "passed" in clean(test.stdout).lower():
+            return floor + 1
+    raise RuntimeError(f"no ground under {x} {y} {z}")
+
+
 def carve(lane: Lane, course: str) -> list[str]:
     """Builds the course around the helper. Returns where to go, as goto arguments."""
     x, y, z = position(lane.helper)
     if course == "trek":
         return [str(x + 300), str(z)]
+    # Spawn can be a treetop. The built courses go in the ground under it.
+    y = ground(lane, x, y, z)
+    fill(lane, x, y, z, x, y + 1, z, "air")
+    in_lane(lane, "tp", lane.helper, f"{x + 0.5}", str(y), f"{z + 0.5}")
     if course == "ravine":
         fill(lane, x + 3, y - 15, z - 20, x + 7, y + 6, z + 20, "air")
         return [str(x + 10), str(z)]
@@ -621,11 +653,12 @@ def restore(data: Path, carried: dict[str, bytes]) -> None:
         path.write_bytes(content)
 
 
-def ensure_template(jar: Path) -> bool:
-    """Boot a fresh seed once and keep that world. Returns whether mobs can be cleared."""
-    if (TEMPLATE / ".ready").exists() and (TEMPLATE / "world" / "level.dat").exists():
+def ensure_template(jar: Path) -> None:
+    """Boot a fresh seed once and keep that world."""
+    ready = TEMPLATE / ".ready"
+    if ready.exists() and ready.read_text() == TEMPLATE_READY and (TEMPLATE / "world" / "level.dat").exists():
         say("Reusing the saved world")
-        return (TEMPLATE / ".clear-mobs").exists()
+        return
 
     say("Making a fresh world from seed minegoon")
     if TEMPLATE.exists():
@@ -642,22 +675,12 @@ def ensure_template(jar: Path) -> bool:
     STARTED.append((name, TEMPLATE, None))
     start_server(name, TEMPLATE)
     wait_ready(name, 300, "minegoon", "status")
-    prepare_template(name, clear_mobs=False)
-    clear_mobs = True
-    killed = rcon(name, "kill", "@e[type=!player]")
-    time.sleep(1)
-    still_here = rcon(name, "data", "get", "entity", HELPER, "Health")
-    if killed.returncode != 0 or still_here.returncode != 0:
-        say("Leaving mobs in place at the start of a trip; clearing them removed the helper")
-        clear_mobs = False
+    prepare_template(name)
     rcon(name, "save-all", "flush")
     time.sleep(2)
     stop_server(name, TEMPLATE)
-    (TEMPLATE / ".ready").write_text("minegoon\n")
-    if clear_mobs:
-        (TEMPLATE / ".clear-mobs").write_text("yes\n")
+    ready.write_text(TEMPLATE_READY)
     say("Fresh world saved")
-    return clear_mobs
 
 
 def jdk_home() -> Path:
@@ -738,12 +761,11 @@ def hint(record: dict) -> str:
     return " ".join("; ".join(pieces).split())[:180]
 
 
-def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Path, revision: str,
-            clear_mobs: bool) -> dict:
+def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Path, revision: str) -> dict:
     mark = lane.helper.removeprefix(HELPER + "-")
     verb = "course" if task.course else "spar" if task.spar else "get"
     say(f"[{mark}] {task.id} r{repeat}: {verb} {task.count} {task.item} from {spot}")
-    prepare_lane(lane, clear_mobs)
+    prepare_lane(lane)
     move_to(lane, spot)
     hand_kit(lane, task)
     target = carve(lane, task.course) if task.course else []
@@ -873,7 +895,10 @@ def spar_record(lane: Lane, task: Task, repeat: int, spot: tuple[int, int] | Non
 def trek_record(lane: Lane, task: Task, repeat: int, spot: tuple[int, int] | None, out: Path, revision: str,
                 trek: dict | None, outcome: str, samples: list[dict], offset: int) -> dict:
     trek = trek or {}
-    status = ("reached" if trek.get("reached") else "failed") if trek else outcome
+    if trek.get("died"):
+        status = "died"
+    else:
+        status = ("reached" if trek.get("reached") else "failed") if trek else outcome
     seconds = round(trek.get("ticks", 0) / 20, 1)
     record = {
         "iteration_rev": revision,
@@ -885,10 +910,11 @@ def trek_record(lane: Lane, task: Task, repeat: int, spot: tuple[int, int] | Non
         "worker": lane.name,
         "outcome": status,
         "seconds": seconds,
-        "deaths": 0,
+        "deaths": 1 if status == "died" else 0,
         "model_calls": 0,
         "guard_catches": 0,
-        "reason": None if status == "reached" else f"ended at {trek.get('end')} going to {trek.get('to')}",
+        "reason": {"reached": None, "died": f"died on the way to {trek.get('to')}"}.get(
+            status, f"ended at {trek.get('end')} going to {trek.get('to')}" if trek else f"no result ({outcome})"),
         "trek": trek,
         "speed": round(trek.get("blocks", 0) / seconds, 2) if seconds else 0,
         "stood_still": "",
@@ -917,14 +943,14 @@ def fight_note(record: dict) -> str:
             f"dealt {fight['dealt']:.0f} took {fight['taken']:.0f}")
 
 
-def work(lane: Lane, out: Path, revision: str, clear_mobs: bool, records: list[dict], lock: threading.Lock) -> None:
+def work(lane: Lane, out: Path, revision: str, records: list[dict], lock: threading.Lock) -> None:
     mark = lane.helper.removeprefix(HELPER + "-")
     for index, (task, repeat, spot) in enumerate(lane.jobs):
         try:
             if index:
                 say(f"[{mark}] putting the fresh world back")
                 put_world_back(lane)
-            record = run_one(lane, task, repeat, spot, out, revision, clear_mobs)
+            record = run_one(lane, task, repeat, spot, out, revision)
         except Exception as error:
             say(f"[{mark}] {task.id} r{repeat} crashed the harness: {error}")
             record = {
@@ -975,7 +1001,7 @@ def main() -> None:
     atexit.register(stop_started)
     for name in ("minegoon-lab-a", "minegoon-lab-b", "minegoon-lab-c", CONTAINER, "minegoon-lab-template"):
         subprocess.run(["docker", "stop", name], capture_output=True)
-    clear_mobs = ensure_template(jar)
+    ensure_template(jar)
     out = output_dir(suite, iteration)
     data = LAB / CONTAINER
     say(f"Preparing {CONTAINER}")
@@ -990,7 +1016,6 @@ def main() -> None:
     write_lanes(data / "plugins" / "Minegoon" / "config.yml")
     disable_end(data / "bukkit.yml")
     (data / ".ready").unlink(missing_ok=True)
-    (data / ".clear-mobs").unlink(missing_ok=True)
     STARTED.append((CONTAINER, data, SUITE_ENV))
     start_server(CONTAINER, data, SUITE_ENV, recreate=True)
     wait_lanes(300)
@@ -1000,7 +1025,7 @@ def main() -> None:
     lock = threading.Lock()
     threads = [
         threading.Thread(
-            target=work, args=(lane, out, revision, clear_mobs, records, lock), daemon=False
+            target=work, args=(lane, out, revision, records, lock), daemon=False
         )
         for lane in lanes
     ]

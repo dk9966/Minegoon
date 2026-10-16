@@ -18,21 +18,29 @@ public final class MainThread {
         this.plugin = plugin;
     }
 
+    /**
+     * Runs on the server thread as soon as it can, which may be later in the
+     * tick that is running now. Several calls in a row can all land in one tick.
+     */
     public <T> T call(Supplier<T> task) {
         if (Bukkit.isPrimaryThread()) {
             return task.get();
         }
         CompletableFuture<T> result = new CompletableFuture<>();
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            if (result.isCancelled()) {
-                return;
-            }
-            try {
-                result.complete(task.get());
-            } catch (Throwable t) {
-                result.completeExceptionally(t);
-            }
-        });
+        Bukkit.getScheduler().runTask(plugin, () -> complete(result, task));
+        return await(result);
+    }
+
+    /**
+     * Runs on the server thread in the next tick. A loop of these advances one
+     * game tick per call, for anything that counts ticks or waits for the body to move.
+     */
+    public <T> T tick(Supplier<T> task) {
+        if (Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("the server thread cannot wait for its own next tick");
+        }
+        CompletableFuture<T> result = new CompletableFuture<>();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> complete(result, task), 1);
         return await(result);
     }
 
@@ -48,6 +56,17 @@ public final class MainThread {
         CompletableFuture<Void> woken = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskLater(plugin, () -> woken.complete(null), Math.max(1, ticks));
         await(woken);
+    }
+
+    private static <T> void complete(CompletableFuture<T> result, Supplier<T> task) {
+        if (result.isCancelled()) {
+            return;
+        }
+        try {
+            result.complete(task.get());
+        } catch (Throwable t) {
+            result.completeExceptionally(t);
+        }
     }
 
     private static <T> T await(CompletableFuture<T> future) {

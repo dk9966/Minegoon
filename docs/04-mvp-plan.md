@@ -276,18 +276,22 @@ Done October 14, 2026: the redesign after the long-trip suite. The helper now ha
 Done October 14, 2026, second half: mobility and the open problems from pass 10.
 
 - **Moving like Baritone.** The helper no longer glides. A route is a list of typed moves (walk, sprint, swim, step up, drop, jump a gap, pillar, ladder, dig down, bridge), each costed in game ticks the way Baritone counts them. A* plans 80-block legs and plans the next one while the current one runs. Every tick an executor presses real keys (forward, jump, sprint, sneak), so gravity, water, ladders and fall damage all happen. Code: `server/src/main/java/dev/minegoon/world/path/` and `actions/PathExecutor.java`. The moves suite (`scripts/long-tasks.sh N moves`) times five courses: a 300-block trek, a cliff, a 6-deep pit, a ravine, and a gap.
-- **Reflexes:** a water-bucket clutch on a long fall, and climbing out of lava.
+- **Reflexes:** a water-bucket clutch on a long fall, and climbing out of lava or off a magma block.
 - **Nights:** with no sword at night on the surface (just after a respawn, say), it digs two down, covers the hole, and waits for morning.
 - **Tools:** a worn tool's last uses go on targets in sight. The false "no sword at night" was swords being worn out on dirt and logs; tools are now chosen by cost including wear.
 - **Fights:** no strafing or backing off over a drop or into lava; an axe against a raised shield; backing off while its own shield is disabled; wears the best armor it carries; shoots a bow at range with the arrow's drop worked out, checking the arrow's whole curve first. The deep kit adds an iron helmet and chestplate, and a bow and arrows when they are cheap to make.
 - **Impossible tasks:** the model is asked first when there is no plan, or nothing known about where to find a raw thing. A "no" stops the task with the reason. While a task runs, the helper reports every 10 minutes, asks for an idea after 10 minutes with no progress, and stops after 30.
 - **Small things:** structures seen are saved per world; the test harness keeps lessons and structures between suite runs, and restarts the practice server if it was running.
 
-Done after that: three full skills passes (11 to 13). Pass 13 got 45 of 57 runs, up from 38: every moves course and fight at 2 or 3 of 3, and bedrock refused up front every time. The bugs those passes found are fixed (see `05-long-tasks.md`). The last two fixes, treading water while idle and breaking giant jungle trunks, have not had a pass yet.
+Done after that: three full skills passes (11 to 13). Pass 13 got 45 of 57 runs, up from 38: every moves course and fight at 2 or 3 of 3, and bedrock refused up front every time. The bugs those passes found are fixed (see `05-long-tasks.md`).
+
+Done October 15, 2026: real game speed. Passes 11 to 13 ran the helper's loops faster than the game's tick, so it mined about three times faster than a player could. Every loop now takes one real tick, which dropped pass 14 to 37 of 57 and showed a set of bugs, mostly in jungles: vines, canopies, sand refilling dug stairs, magma, a walk home that never fought, and a step clock that let one walk hang for minutes. All are fixed (see "Passes 14 to 21" in `05-long-tasks.md`). The one-repeat pass after most of the fixes got 14 of 19, including a diamond in 14 minutes. Scores from before and after the change are not comparable.
 
 Next:
 
-- One more skills pass to check those two fixes. Then diamonds (the trip back from y=-59) and sheep, the two tasks still at 0 of 3.
+- A full three-repeat skills pass on an idle machine. The last one ran while the machine was busy and the server stalled, so the centring fix for vines and the armed walk home have no full pass yet.
+- Sheep, amethyst, and diamonds, worked on in parallel.
+- Moving the task-status writes off the server thread.
 - Then **M0** (the panel switch, yours to do) and the M1 to M4 checks in the table.
 
 ### How to run it
