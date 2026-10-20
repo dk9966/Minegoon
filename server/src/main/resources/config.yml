@@ -11,6 +11,8 @@ openrouter:
   # once where to look; good advice is kept in lessons.json. Without a key,
   # the helper searches with what it knows.
   api-key: ""
+  # Any server that answers OpenRouter's chat completions API.
+  url: https://openrouter.ai/api/v1/chat/completions
   planner-model: anthropic/claude-opus-5.5
   desk-model: google/gemini-3.8-flash
   advice-model: google/gemini-3.8-flash

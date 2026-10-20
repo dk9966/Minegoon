@@ -38,7 +38,7 @@ public final class MinegoonPlugin extends JavaPlugin {
         MainThread main = new MainThread(this);
         Cookbook cookbook = Cookbook.load();
         getLogger().info("Cookbook knows a survival way to get " + cookbook.knownItems() + " items.");
-        OpenRouter router = new OpenRouter(settings.apiKey(), settings.fallbackModel());
+        OpenRouter router = new OpenRouter(settings.apiKey(), settings.apiUrl(), settings.fallbackModel());
         Knowledge knowledge = readKnowledge();
         Lessons lessons = new Lessons(getDataFolder().toPath().resolve("lessons.json"));
         getLogger().info("Knowledge loaded; " + lessons.size() + " lessons learned so far.");

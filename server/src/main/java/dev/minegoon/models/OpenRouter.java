@@ -21,16 +21,17 @@ import java.util.function.Function;
  */
 public final class OpenRouter implements ModelClient {
 
-    private static final URI ENDPOINT = URI.create("https://openrouter.ai/api/v1/chat/completions");
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Gson gson = new Gson();
     private final String apiKey;
+    private final URI endpoint;
     private final String fallbackModel;
 
-    public OpenRouter(String apiKey, String fallbackModel) {
+    public OpenRouter(String apiKey, URI endpoint, String fallbackModel) {
         this.apiKey = apiKey == null ? "" : apiKey.trim();
+        this.endpoint = endpoint;
         this.fallbackModel = fallbackModel;
     }
 
@@ -84,7 +85,7 @@ public final class OpenRouter implements ModelClient {
     }
 
     private <T> T send(JsonObject body, Function<JsonObject, T> read) throws IOException {
-        HttpRequest request = HttpRequest.newBuilder(ENDPOINT)
+        HttpRequest request = HttpRequest.newBuilder(endpoint)
             .timeout(TIMEOUT)
             .header("Authorization", "Bearer " + apiKey)
             .header("Content-Type", "application/json")
