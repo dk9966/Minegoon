@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** One JSON line per finished task or mission, for practice runs to score. */
+/** One JSON line per finished task or mission and per front desk turn, for practice runs to score. */
 public final class Results {
 
     private final Path file;
@@ -49,9 +49,20 @@ public final class Results {
         append(line);
     }
 
+    /** One front desk turn: the tool it picked, whether the game confirmed it, what the helper said, and the cost. */
+    public record Desk(String tool, String args, boolean ok, String said, double cost) {
+    }
+
+    public void desk(Desk desk) {
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("desk", desk);
+        append(line);
+    }
+
     void record(Task task) {
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("task", task.id());
+        line.put("mission_id", task.missionId());
         line.put("goal", task.describe());
         line.put("status", task.status().name().toLowerCase(Locale.ROOT));
         line.put("reason", task.reason());

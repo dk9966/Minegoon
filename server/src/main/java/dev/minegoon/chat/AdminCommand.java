@@ -3,6 +3,7 @@ package dev.minegoon.chat;
 import dev.minegoon.ItemSet;
 import dev.minegoon.agent.FrontDesk;
 import dev.minegoon.jobs.Foreman;
+import dev.minegoon.jobs.Mission;
 import dev.minegoon.jobs.MissionBoard;
 import dev.minegoon.jobs.Step;
 import dev.minegoon.jobs.Task;
@@ -110,6 +111,11 @@ public final class AdminCommand implements TabExecutor {
     }
 
     private void results(CommandSender sender) {
+        for (Mission mission : missions.recent(5)) {
+            sender.sendMessage("Mission #" + mission.id() + " " + mission.describe() + ": " + mission.status()
+                + (mission.reason() == null ? "" : " (" + mission.reason() + ")") + ", turns " + mission.turns()
+                + ", planner calls " + mission.strongCalls() + ", cost $%.4f".formatted(mission.cost()));
+        }
         List<Task> tasks = foreman.recent(10);
         if (tasks.isEmpty()) {
             sender.sendMessage("No tasks yet.");

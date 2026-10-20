@@ -407,7 +407,8 @@ public final class Session {
         peek = new Peek(plugin, helper);
         commands = new Commands(helper, foreman, zones, watch, peek);
         desk = new FrontDesk(shared.router(), settings.agent().deskModel(),
-            new DeskTools(commands, foreman, missions, senses).all(), missions, foreman, helper::say, log, helperName);
+            new DeskTools(commands, foreman, missions, senses).all(), missions, foreman, results, helper::say, log,
+            helperName);
         listen(helper);
         listen(watch);
         listen(peek);

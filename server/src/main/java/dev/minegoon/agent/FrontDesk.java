@@ -5,6 +5,7 @@ import dev.minegoon.chat.Commands.Speaker;
 import dev.minegoon.jobs.Foreman;
 import dev.minegoon.jobs.Mission;
 import dev.minegoon.jobs.MissionBoard;
+import dev.minegoon.jobs.Results;
 import dev.minegoon.models.ModelClient;
 import dev.minegoon.models.ModelClient.ToolCall;
 import java.io.IOException;
@@ -40,17 +41,19 @@ public final class FrontDesk {
     private final Toolbox<Speaker> toolbox;
     private final MissionBoard missions;
     private final Foreman foreman;
+    private final Results results;
     private final Consumer<String> say;
     private final Logger log;
     private final String helperName;
 
     public FrontDesk(ModelClient model, String deskModel, List<Tool<Speaker>> tools, MissionBoard missions,
-                     Foreman foreman, Consumer<String> say, Logger log, String helperName) {
+                     Foreman foreman, Results results, Consumer<String> say, Logger log, String helperName) {
         this.model = model;
         this.deskModel = deskModel;
         this.toolbox = new Toolbox<>(tools, () -> "");
         this.missions = missions;
         this.foreman = foreman;
+        this.results = results;
         this.say = say;
         this.log = log;
         this.helperName = helperName;
@@ -69,18 +72,21 @@ public final class FrontDesk {
                 toolbox.specs());
         } catch (IOException e) {
             log.warning("Could not read chat with the model: " + e.getMessage());
-            say.accept("Sorry, I didn't catch that. Try get 5 diamond.");
+            String said = "Sorry, I didn't catch that. Try get 5 diamond.";
+            say.accept(said);
+            results.desk(new Results.Desk(null, "{}", false, said, 0));
             return;
         }
         Receipt receipt = toolbox.run(call, speaker);
         missions.event(mission.map(Mission::id).orElse(null), "desk: " + call.name() + " " + call.arguments()
             + " -> " + (receipt.confirmed() ? "ok" : "failed") + ", %d+%d tokens, cost %.5f".formatted(
                 call.usage().promptTokens(), call.usage().completionTokens(), call.usage().cost()));
-        if (!receipt.confirmed()) {
-            say.accept("Sorry, I can't: " + receipt.observed());
-        } else if (!receipt.observed().isBlank()) {
-            say.accept(receipt.observed());
+        String said = receipt.confirmed() ? receipt.observed() : "Sorry, I can't: " + receipt.observed();
+        if (!said.isBlank()) {
+            say.accept(said);
         }
+        results.desk(new Results.Desk(call.name(), call.arguments().toString(), receipt.confirmed(), said,
+            call.usage().cost()));
     }
 
     private String briefing(Speaker speaker, String text, Optional<Mission> mission) {
