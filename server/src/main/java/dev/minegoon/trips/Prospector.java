@@ -6,6 +6,7 @@ import dev.minegoon.actions.Mover;
 import dev.minegoon.jobs.Step;
 import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Knowledge.Find;
+import dev.minegoon.knowledge.Knowledge.SearchOrders;
 import dev.minegoon.knowledge.Knowledge.Way;
 import dev.minegoon.knowledge.Lessons;
 import dev.minegoon.world.Goal;
@@ -65,6 +66,7 @@ public final class Prospector {
     private final Set<Long> seen = new HashSet<>();
     private final Map<String, List<Pos>> visits = new HashMap<>();
     private int heading = -1;
+    private SearchOrders orders = SearchOrders.NONE;
 
     public Prospector(Knowledge knowledge, Lessons lessons, Mover mover, Vision vision, Structures structures,
                       Tunneler tunneler, String who, Logger log) {
@@ -98,7 +100,12 @@ public final class Prospector {
 
     public Search search(String what, List<String> names) {
         String subject = names.isEmpty() ? what : knowledge.canonical(names.getFirst());
-        return new Search(what, lessons.apply(subject, knowledge.find(names)));
+        return new Search(what, orders.over(lessons.apply(subject, knowledge.find(names))));
+    }
+
+    /** What the player asked for about how to search, until the task ends. */
+    public void orders(SearchOrders orders) {
+        this.orders = orders;
     }
 
     /** The knowledge entry that speaks for a step, or null for steps that do not search. */

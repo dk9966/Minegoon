@@ -1,16 +1,17 @@
 package dev.minegoon.jobs;
 
 import dev.minegoon.ItemSet;
+import dev.minegoon.knowledge.Knowledge.SearchOrders;
 import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 
-/** One request, such as "get 5 diamond", and where to bring the result. */
-public record Task(long id, UUID owner, String ownerName, Material goal, int count, Status status, String reason,
-                   String world, double homeX, double homeY, double homeZ, Set<String> avoid, int deaths,
-                   int modelCalls, long createdAt) {
+/** One request, such as "get 5 diamond", where to bring the result, and how the player said to search. */
+public record Task(long id, UUID owner, String ownerName, Material goal, int count, SearchOrders search,
+                   Status status, String reason, String world, double homeX, double homeY, double homeZ,
+                   Set<String> avoid, int deaths, int modelCalls, long createdAt) {
 
     public enum Status {
         ACTIVE, PAUSED, DONE, BLOCKED, CANCELLED;

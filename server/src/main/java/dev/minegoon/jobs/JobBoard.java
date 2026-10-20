@@ -2,6 +2,7 @@ package dev.minegoon.jobs;
 
 import com.google.gson.Gson;
 import dev.minegoon.Database;
+import dev.minegoon.knowledge.Knowledge.SearchOrders;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
@@ -10,14 +11,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.bukkit.Location;
 import org.bukkit.Material;
 
 /** Tasks and their jobs, stored in SQLite so work survives restarts. */
 public final class JobBoard {
 
     private static final String TASK = """
-        SELECT id, owner, owner_name, goal, count, status, reason, world, home_x, home_y, home_z,
+        SELECT id, owner, owner_name, goal, count, search, status, reason, world, home_x, home_y, home_z,
                avoid, deaths, model_calls, created_at
         FROM tasks
         """;
@@ -31,12 +31,14 @@ public final class JobBoard {
         this.db = db;
     }
 
-    public long createTask(UUID owner, String ownerName, Material goal, int count, Location home) {
+    public long createTask(Request request) {
         return db.insert("""
-            INSERT INTO tasks (owner, owner_name, goal, count, status, world, home_x, home_y, home_z, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, owner == null ? null : owner.toString(), ownerName, goal.name(), count, Task.Status.ACTIVE.name(),
-            home.getWorld().getName(), home.getX(), home.getY(), home.getZ(), System.currentTimeMillis());
+            INSERT INTO tasks (owner, owner_name, goal, count, search, status, world, home_x, home_y, home_z, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, request.owner() == null ? null : request.owner().toString(), request.ownerName(),
+            request.goal().name(), request.count(), request.search().none() ? null : gson.toJson(request.search()),
+            Task.Status.ACTIVE.name(), request.home().getWorld().getName(), request.home().getX(),
+            request.home().getY(), request.home().getZ(), System.currentTimeMillis());
     }
 
     public Optional<Task> task(long id) {
@@ -144,8 +146,11 @@ public final class JobBoard {
     private Task task(ResultSet row) throws SQLException {
         String owner = row.getString("owner");
         String avoid = row.getString("avoid");
+        String search = row.getString("search");
         return new Task(row.getLong("id"), owner == null ? null : UUID.fromString(owner), row.getString("owner_name"),
-            Material.valueOf(row.getString("goal")), row.getInt("count"), Task.Status.valueOf(row.getString("status")),
+            Material.valueOf(row.getString("goal")), row.getInt("count"),
+            search == null ? SearchOrders.NONE : gson.fromJson(search, SearchOrders.class),
+            Task.Status.valueOf(row.getString("status")),
             row.getString("reason"), row.getString("world"),
             row.getDouble("home_x"), row.getDouble("home_y"), row.getDouble("home_z"),
             avoid.isEmpty() ? Set.of() : Arrays.stream(avoid.split(",")).collect(Collectors.toUnmodifiableSet()),

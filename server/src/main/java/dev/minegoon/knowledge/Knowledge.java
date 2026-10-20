@@ -36,7 +36,7 @@ public final class Knowledge {
             return name().toLowerCase(Locale.ROOT);
         }
 
-        /** A move a model may suggest. Digging blind is strip mining, which only knowledge.yml asks for. */
+        /** A move a model may suggest. Digging blind is strip mining, which only knowledge.yml or a player asks for. */
         public boolean advisable() {
             return this != DIG;
         }
@@ -60,6 +60,34 @@ public final class Knowledge {
             Set<T> both = new LinkedHashSet<>(first);
             both.addAll(second);
             return List.copyOf(both);
+        }
+    }
+
+    /**
+     * Moves and biomes a player asked for, such as "strip mine" or "from the
+     * plains". They go before lessons and knowledge, and they are the only way
+     * dig, which is strip mining, gets into a search.
+     */
+    public record SearchOrders(List<Way> ways, List<String> biomes) {
+
+        public static final SearchOrders NONE = new SearchOrders(List.of(), List.of());
+
+        public SearchOrders {
+            ways = List.copyOf(ways);
+            biomes = List.copyOf(biomes);
+        }
+
+        public boolean none() {
+            return ways.isEmpty() && biomes.isEmpty();
+        }
+
+        /** These orders first, then {@code base}, at its heights. Asking for a biome means going there. */
+        public Find over(Find base) {
+            if (none()) {
+                return base;
+            }
+            List<Way> moves = biomes.isEmpty() || ways.contains(Way.ROAM) ? ways : Find.union(ways, List.of(Way.ROAM));
+            return new Find(moves, base.low(), base.high(), base.best(), biomes, List.of(), base.trip()).then(base);
         }
     }
 

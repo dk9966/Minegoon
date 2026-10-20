@@ -8,8 +8,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** The plugin's SQLite file: tasks, jobs, zones, placed blocks, and an event log. */
 public final class Database implements AutoCloseable {
@@ -69,6 +71,13 @@ public final class Database implements AutoCloseable {
         );
         """;
 
+    /** A column added after its table was first made. SQLite has no ADD COLUMN IF NOT EXISTS. */
+    private record Added(String table, String column, String type) {
+    }
+
+    private static final List<Added> ADDED = List.of(
+        new Added("tasks", "search", "TEXT"));
+
     private final Connection connection;
 
     public Database(Path file) throws SQLException {
@@ -85,7 +94,22 @@ public final class Database implements AutoCloseable {
                     statement.execute(table);
                 }
             }
+            for (Added added : ADDED) {
+                if (!columns(statement, added.table()).contains(added.column())) {
+                    statement.execute("ALTER TABLE " + added.table() + " ADD COLUMN " + added.column() + " " + added.type());
+                }
+            }
         }
+    }
+
+    private static Set<String> columns(Statement statement, String table) throws SQLException {
+        Set<String> names = new HashSet<>();
+        try (ResultSet columns = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (columns.next()) {
+                names.add(columns.getString("name"));
+            }
+        }
+        return names;
     }
 
     @FunctionalInterface

@@ -7,6 +7,7 @@ import dev.minegoon.actions.ActionFailed;
 import dev.minegoon.actions.Body;
 import dev.minegoon.actions.Crafter;
 import dev.minegoon.actions.Hands;
+import dev.minegoon.knowledge.Knowledge.SearchOrders;
 import dev.minegoon.models.Advisor;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.planner.Planner;
@@ -97,13 +98,13 @@ public final class Foreman {
         this.log = log;
     }
 
-    public synchronized void get(UUID owner, String ownerName, Location home, Material goal, int count) {
+    public synchronized void get(Request request) {
         board.current().ifPresent(old -> finish(old.id(), Task.Status.CANCELLED, "replaced by a new request"));
         resetSupplies();
         tutor.newTask();
-        long id = board.createTask(owner, ownerName, goal, count, home);
+        long id = board.createTask(request);
         launch("task-" + id, () -> {
-            say("On it: " + count + " " + ItemSet.key(goal) + ".");
+            say("On it: " + request.count() + " " + ItemSet.key(request.goal()) + ".");
             if (feasible(id) && replan(id, Set.of())) {
                 work(id);
             }
@@ -485,6 +486,7 @@ public final class Foreman {
     }
 
     private void work(long taskId) {
+        crew.prospector().orders(board.task(taskId).orElseThrow().search());
         while (true) {
             Task task = board.task(taskId).orElseThrow();
             if (task.status() != Task.Status.ACTIVE) {
@@ -706,6 +708,7 @@ public final class Foreman {
     }
 
     private void finish(long taskId, Task.Status status, String reason) {
+        crew.prospector().orders(SearchOrders.NONE);
         board.setStatus(taskId, status, reason);
         zones.endTask(taskId);
         board.task(taskId).ifPresent(results::record);

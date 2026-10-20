@@ -2,6 +2,7 @@ package dev.minegoon.chat;
 
 import dev.minegoon.ItemSet;
 import dev.minegoon.jobs.Foreman;
+import dev.minegoon.jobs.Request;
 import dev.minegoon.safety.Zones;
 import dev.minegoon.spawn.Helper;
 import java.util.UUID;
@@ -83,7 +84,7 @@ public final class Commands {
             helper.say("I can fetch between 1 and " + MAX_COUNT + " at a time.");
             return;
         }
-        foreman.get(speaker.id(), speaker.name(), speaker.location(), goal, count);
+        foreman.get(Request.of(speaker.id(), speaker.name(), speaker.location(), goal, count));
     }
 
     private void protect(Speaker speaker, int given) {
