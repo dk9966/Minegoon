@@ -17,7 +17,7 @@ public final class Commands {
 
     private static final int DEFAULT_RADIUS = 16;
     private static final int MAX_RADIUS = 128;
-    private static final int MAX_COUNT = 64 * 9;
+    public static final int MAX_COUNT = 64 * 9;
     private static final String HELP = "Say get 5 diamond, come, give, status, inventory, stop, pause, "
         + "resume, protect 20, allow 10, watch, or back.";
 

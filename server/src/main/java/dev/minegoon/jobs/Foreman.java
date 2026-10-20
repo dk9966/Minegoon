@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -52,6 +53,9 @@ import org.bukkit.inventory.Recipe;
  * the cycle starts again. When a search keeps coming up empty the tutor may ask
  * a model for advice once, and the answer becomes a lesson. A task only stops
  * when a player stops it, or when no plan for it exists at all.
+ *
+ * A mission runs on the same worker thread and fetches its tasks one by one,
+ * so stopping, pausing, calling the helper over, and dying reach it too.
  */
 public final class Foreman {
 
@@ -67,6 +71,7 @@ public final class Foreman {
 
     private final Body body;
     private final JobBoard board;
+    private final MissionBoard missions;
     private final Inspector inspector;
     private final Planner planner;
     private final Crew crew;
@@ -78,16 +83,19 @@ public final class Foreman {
     private final Set<Long> supplied = new HashSet<>();
     private final Stall stall = new Stall();
     private Thread worker;
+    private LongConsumer missionRunner = id -> {
+    };
     private boolean feeding;
     private boolean replacingTool;
     private boolean rearming;
     private boolean bedding;
     private boolean sheltered;
 
-    public Foreman(Body body, JobBoard board, Inspector inspector, Planner planner, Crew crew, Tutor tutor,
-                   Zones zones, Results results, Database db, Logger log) {
+    public Foreman(Body body, JobBoard board, MissionBoard missions, Inspector inspector, Planner planner, Crew crew,
+                   Tutor tutor, Zones zones, Results results, Database db, Logger log) {
         this.body = body;
         this.board = board;
+        this.missions = missions;
         this.inspector = inspector;
         this.planner = planner;
         this.crew = crew;
@@ -98,9 +106,24 @@ public final class Foreman {
         this.log = log;
     }
 
+    /** How a mission runs on the worker thread, until it ends or the worker is interrupted. */
+    public void runMissionsWith(LongConsumer runner) {
+        missionRunner = runner;
+    }
+
     public synchronized void get(Request request) {
+        endMission(Task.Status.CANCELLED, "replaced by a new request");
         long id = post(request);
         launch("task-" + id, () -> fetch(id));
+    }
+
+    /** Starts a mission for a spoken request in place of whatever was running. Returns its id. */
+    public synchronized long undertake(UUID owner, String ownerName, Location home, String request) {
+        endMission(Task.Status.CANCELLED, "replaced by a new request");
+        board.current().ifPresent(old -> finish(old.id(), Task.Status.CANCELLED, "replaced by a new request"));
+        long id = missions.create(owner, ownerName, home, request);
+        launch("mission-" + id, () -> missionRunner.accept(id));
+        return id;
     }
 
     /** Puts a task on the board in place of the one there. It starts once something fetches it. */
@@ -160,12 +183,16 @@ public final class Foreman {
         }
     }
 
+    /** A mission's task that gave up goes back to the mission, which reads how it ended. */
     private synchronized void giveUp(Task task) {
         launch("give-up", () -> {
             String reason = "no progress in " + Stall.GIVE_UP_MS / 60_000 + " minutes";
             finish(task.id(), Task.Status.BLOCKED, reason);
             say("I've made no progress on " + task.describe() + " in " + Stall.GIVE_UP_MS / 60_000
                 + " minutes, so I'm stopping.");
+            if (task.missionId() != null) {
+                missionRunner.accept(task.missionId());
+            }
         });
     }
 
@@ -214,10 +241,12 @@ public final class Foreman {
 
     public synchronized void stop() {
         halt();
-        board.current().ifPresentOrElse(task -> {
-            finish(task.id(), Task.Status.CANCELLED, "stopped by a player");
-            say("Stopped working on " + task.describe() + ".");
-        }, () -> say("I'm not working on anything."));
+        Optional<String> mission = endMission(Task.Status.CANCELLED, "stopped by a player");
+        Optional<Task> task = board.current();
+        task.ifPresent(stopped -> finish(stopped.id(), Task.Status.CANCELLED, "stopped by a player"));
+        mission.or(() -> task.map(Task::describe)).ifPresentOrElse(
+            what -> say("Stopped working on " + what + "."),
+            () -> say("I'm not working on anything."));
     }
 
     public synchronized void pause() {
@@ -229,20 +258,38 @@ public final class Foreman {
     }
 
     public synchronized void resume() {
+        Optional<Mission> mission = missions.current().filter(paused -> paused.status() == Task.Status.PAUSED);
+        if (mission.isPresent()) {
+            long id = mission.get().id();
+            missions.setStatus(id, Task.Status.ACTIVE, null);
+            say("Carrying on with " + mission.get().describe() + ".");
+            launch("mission-" + id, () -> missionRunner.accept(id));
+            return;
+        }
         board.current().filter(task -> task.status() == Task.Status.PAUSED).ifPresentOrElse(task -> {
             board.setStatus(task.id(), Task.Status.ACTIVE, null);
             say("Carrying on with " + task.describe() + ".");
-            launch("task-" + task.id(), () -> fetch(task.id()));
+            launch("task-" + task.id(), () -> carryOn(task));
         }, () -> say("Nothing is paused."));
     }
 
-    /** Picks up an active task after a server restart. */
+    /** Picks up an active mission or task after a server restart. */
     public synchronized void resumeAfterRestart() {
+        Optional<Mission> mission = missions.current().filter(active -> active.status() == Task.Status.ACTIVE);
+        if (mission.isPresent()) {
+            long id = mission.get().id();
+            launch("mission-" + id, () -> {
+                awaitStanding();
+                say("Picking up where I left off: " + mission.get().describe() + ".");
+                missionRunner.accept(id);
+            });
+            return;
+        }
         board.current().filter(task -> task.status() == Task.Status.ACTIVE)
             .ifPresent(task -> launch("task-" + task.id(), () -> {
                 awaitStanding();
                 say("Picking up where I left off: " + task.describe() + ".");
-                fetch(task.id());
+                carryOn(task);
             }));
     }
 
@@ -283,26 +330,41 @@ public final class Foreman {
         launch(name, drill);
     }
 
-    /** Called the moment the helper dies, before it respawns. */
+    /**
+     * Called the moment the helper dies, before it respawns. A task goes back
+     * for the things first. A mission with no task running is told where it
+     * died, and carries on once the things are picked up or given up on.
+     */
     public synchronized void onDeath(Location spot) {
         halt();
         Step.Recover recover = new Step.Recover(spot.getWorld().getName(), spot.getBlockX(), spot.getBlockY(),
             spot.getBlockZ(), System.currentTimeMillis() + RECOVER_WINDOW_MS);
         Optional<Task> active = board.current().filter(task -> task.status() == Task.Status.ACTIVE);
-        if (active.isEmpty()) {
-            launch("recover", () -> {
+        if (active.isPresent()) {
+            Task task = active.get();
+            board.countDeath(task.id());
+            board.addFront(task.id(), recover);
+            launch("task-" + task.id(), () -> {
                 awaitStanding();
-                crew.homecoming().recover(recover, crew.retreat());
+                say("I died. Going back for my things, then I'll carry on.");
+                carryOn(task);
             });
             return;
         }
-        Task task = active.get();
-        board.countDeath(task.id());
-        board.addFront(task.id(), recover);
-        launch("task-" + task.id(), () -> {
+        Optional<Mission> mission = missions.current().filter(running -> running.status() == Task.Status.ACTIVE);
+        mission.ifPresent(running -> missions.append(running.id(), Mission.Line.note(
+            "died at " + spot.getBlockX() + " " + spot.getBlockY() + " " + spot.getBlockZ())));
+        launch("recover", () -> {
             awaitStanding();
-            say("I died. Going back for my things, then I'll carry on.");
-            fetch(task.id());
+            try {
+                crew.homecoming().recover(recover, crew.retreat());
+            } catch (ActionFailed lost) {
+                if (mission.isEmpty()) {
+                    throw lost;
+                }
+                missions.append(mission.get().id(), Mission.Line.note(lost.getMessage()));
+            }
+            mission.ifPresent(running -> missionRunner.accept(running.id()));
         });
     }
 
@@ -325,14 +387,17 @@ public final class Foreman {
     }
 
     public List<String> status() {
-        Optional<Task> current = board.current();
-        if (current.isEmpty()) {
-            return List.of("Idle. " + vitals());
-        }
-        Task task = current.get();
-        String state = task.status() == Task.Status.PAUSED ? "Paused (" + task.reason() + ")" : "Working";
-        String step = board.next(task.id()).map(this::progress).orElse("finishing up");
-        return List.of(state + " on " + task.describe() + ": " + step + ".", vitals());
+        List<String> lines = new ArrayList<>();
+        missions.current().ifPresent(mission -> lines.add(state(mission.status(), mission.reason()) + " on "
+            + mission.describe() + ", turn " + mission.turns() + "."));
+        board.current().ifPresent(task -> lines.add(state(task.status(), task.reason()) + " on " + task.describe()
+            + ": " + board.next(task.id()).map(this::progress).orElse("finishing up") + "."));
+        lines.add((lines.isEmpty() ? "Idle. " : "") + vitals());
+        return lines;
+    }
+
+    private static String state(Task.Status status, String reason) {
+        return status == Task.Status.PAUSED ? "Paused (" + reason + ")" : "Working";
     }
 
     private void resetSupplies() {
@@ -732,10 +797,28 @@ public final class Foreman {
     }
 
     private boolean pauseActive(String reason) {
+        Optional<Mission> mission = missions.current().filter(running -> running.status() == Task.Status.ACTIVE);
+        mission.ifPresent(running -> missions.setStatus(running.id(), Task.Status.PAUSED, reason));
         Optional<Task> active = board.current().filter(task -> task.status() == Task.Status.ACTIVE);
         active.ifPresent(task -> board.setStatus(task.id(), Task.Status.PAUSED, reason));
         halt();
-        return active.isPresent();
+        return mission.isPresent() || active.isPresent();
+    }
+
+    /** Ends the current mission, if there is one, and says which it was. */
+    private Optional<String> endMission(Task.Status status, String reason) {
+        Optional<Mission> mission = missions.current();
+        mission.ifPresent(ended -> missions.setStatus(ended.id(), status, reason));
+        return mission.map(Mission::describe);
+    }
+
+    /** Carries on with a task, inside its mission when it has one, so the mission reads how it ends. */
+    private void carryOn(Task task) {
+        if (task.missionId() != null) {
+            missionRunner.accept(task.missionId());
+        } else {
+            fetch(task.id());
+        }
     }
 
     /** Starts new work once the previous worker has wound down. */

@@ -13,6 +13,7 @@ import dev.minegoon.chat.Watch;
 import dev.minegoon.jobs.Foreman;
 import dev.minegoon.jobs.Inspector;
 import dev.minegoon.jobs.JobBoard;
+import dev.minegoon.jobs.MissionBoard;
 import dev.minegoon.jobs.Results;
 import dev.minegoon.jobs.Tutor;
 import dev.minegoon.knowledge.Knowledge;
@@ -375,7 +376,9 @@ public final class Session {
             Names::biome, log);
 
         results = new Results(folder.resolve("results.jsonl"));
-        foreman = new Foreman(body, new JobBoard(db), new Inspector(main, helper), new Planner(shared.cookbook()),
+        MissionBoard missions = new MissionBoard(db);
+        Inspector inspector = new Inspector(main, helper);
+        foreman = new Foreman(body, new JobBoard(db), missions, inspector, new Planner(shared.cookbook()),
             crew, tutor, zones, results, db, log);
         helper.onDeath(spot -> {
             diedAt = Bukkit.getCurrentTick();

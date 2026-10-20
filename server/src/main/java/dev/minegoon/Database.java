@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-/** The plugin's SQLite file: tasks, jobs, zones, placed blocks, and an event log. */
+/** The plugin's SQLite file: tasks, jobs, missions, zones, placed blocks, and an event log. */
 public final class Database implements AutoCloseable {
 
     private static final String SCHEMA = """
@@ -61,6 +61,25 @@ public final class Database implements AutoCloseable {
             y INTEGER NOT NULL,
             z INTEGER NOT NULL,
             PRIMARY KEY (world, x, y, z)
+        );
+        CREATE TABLE IF NOT EXISTS missions (
+            id INTEGER PRIMARY KEY,
+            owner TEXT,
+            owner_name TEXT,
+            request TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reason TEXT,
+            world TEXT NOT NULL,
+            home_x REAL NOT NULL,
+            home_y REAL NOT NULL,
+            home_z REAL NOT NULL,
+            plan TEXT,
+            log TEXT NOT NULL DEFAULT '',
+            model_calls INTEGER NOT NULL DEFAULT 0,
+            strong_calls INTEGER NOT NULL DEFAULT 0,
+            cost REAL NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            finished_at INTEGER
         );
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY,
