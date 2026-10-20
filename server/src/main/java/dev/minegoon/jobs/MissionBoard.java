@@ -70,8 +70,11 @@ public final class MissionBoard {
         db.update("UPDATE missions SET plan = ? WHERE id = ?", gson.toJson(plan), id);
     }
 
-    /** One model turn: which model, the tool and a short form of its arguments, the receipt, tokens and cost. */
-    public void event(long id, String detail) {
+    /**
+     * One model turn: which model, the tool and a short form of its arguments,
+     * the receipt, tokens and cost. A front desk turn may have no mission.
+     */
+    public void event(Long id, String detail) {
         db.insert("INSERT INTO events (mission_id, kind, detail, at) VALUES (?, 'agent', ?, ?)",
             id, detail, System.currentTimeMillis());
     }

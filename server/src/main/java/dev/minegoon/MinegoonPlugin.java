@@ -4,7 +4,6 @@ import dev.minegoon.chat.ChatListener;
 import dev.minegoon.chat.LaneCommand;
 import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Lessons;
-import dev.minegoon.models.IntentParser;
 import dev.minegoon.models.OpenRouter;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.trips.Prospector;
@@ -65,8 +64,7 @@ public final class MinegoonPlugin extends JavaPlugin {
             return;
         }
 
-        IntentParser parser = new IntentParser(router, settings.agent().deskModel(), settings.helperName());
-        getServer().getPluginManager().registerEvents(new ChatListener(main, sessions, parser, getLogger()), this);
+        getServer().getPluginManager().registerEvents(new ChatListener(main, sessions), this);
         PluginCommand command = Objects.requireNonNull(getCommand("minegoon"));
         command.setExecutor(executor(settings));
         command.setTabCompleter(executor(settings));

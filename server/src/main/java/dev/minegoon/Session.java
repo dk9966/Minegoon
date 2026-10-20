@@ -1,7 +1,9 @@
 package dev.minegoon;
 
 import dev.minegoon.actions.Body;
+import dev.minegoon.agent.DeskTools;
 import dev.minegoon.agent.DoneWhen;
+import dev.minegoon.agent.FrontDesk;
 import dev.minegoon.agent.MissionRunner;
 import dev.minegoon.agent.MissionTools;
 import dev.minegoon.agent.Senses;
@@ -111,6 +113,7 @@ public final class Session {
     private Peek peek;
     private Reflexes reflexes;
     private Commands commands;
+    private FrontDesk desk;
     private AdminCommand admin;
 
     private Session(Plugin plugin, Shared shared, String worldName, String helperName, Path folder, boolean lane) {
@@ -148,6 +151,10 @@ public final class Session {
 
     public Commands commands() {
         return commands;
+    }
+
+    public FrontDesk desk() {
+        return desk;
     }
 
     public AdminCommand admin() {
@@ -201,6 +208,7 @@ public final class Session {
         peek = null;
         reflexes = null;
         commands = null;
+        desk = null;
         admin = null;
     }
 
@@ -398,11 +406,13 @@ public final class Session {
         watch = new Watch(plugin, helper);
         peek = new Peek(plugin, helper);
         commands = new Commands(helper, foreman, zones, watch, peek);
+        desk = new FrontDesk(shared.router(), settings.agent().deskModel(),
+            new DeskTools(commands, foreman, missions, senses).all(), missions, foreman, helper::say, log, helperName);
         listen(helper);
         listen(watch);
         listen(peek);
         listen(new BreakGuard(helper, policy, results::guardCaught, plugin.getLogger()));
-        admin = new AdminCommand(helper, commands, foreman, peek, settings.lab());
+        admin = new AdminCommand(helper, commands, desk, foreman, missions, peek, settings.lab());
 
         reflexes = new Reflexes(helper, fighter::engaged);
         helper.spawn();

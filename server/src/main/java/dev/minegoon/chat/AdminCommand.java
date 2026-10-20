@@ -1,7 +1,9 @@
 package dev.minegoon.chat;
 
 import dev.minegoon.ItemSet;
+import dev.minegoon.agent.FrontDesk;
 import dev.minegoon.jobs.Foreman;
+import dev.minegoon.jobs.MissionBoard;
 import dev.minegoon.jobs.Step;
 import dev.minegoon.jobs.Task;
 import dev.minegoon.planner.Planner;
@@ -15,25 +17,31 @@ import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 
 /**
- * /minegoon, for the console and operators: the same commands as chat, plus
- * a dry-run planner, recent results, and a reset for practice runs.
+ * /minegoon, for the console and operators: the same commands as chat, a
+ * sentence for the front desk as if said in chat, a dry-run planner, recent
+ * results, and a reset for practice runs.
  */
 public final class AdminCommand implements TabExecutor {
 
     private static final List<String> SUBCOMMANDS = List.of(
         "get", "status", "inventory", "stop", "pause", "resume", "come", "give", "protect", "allow", "watch", "back",
-        "plan", "results", "reset");
+        "ask", "plan", "results", "reset");
 
     private final Helper helper;
     private final Commands commands;
+    private final FrontDesk desk;
     private final Foreman foreman;
+    private final MissionBoard missions;
     private final Peek peek;
     private final boolean lab;
 
-    public AdminCommand(Helper helper, Commands commands, Foreman foreman, Peek peek, boolean lab) {
+    public AdminCommand(Helper helper, Commands commands, FrontDesk desk, Foreman foreman, MissionBoard missions,
+                        Peek peek, boolean lab) {
         this.helper = helper;
         this.commands = commands;
+        this.desk = desk;
         this.foreman = foreman;
+        this.missions = missions;
         this.peek = peek;
         this.lab = lab;
     }
@@ -44,6 +52,7 @@ public final class AdminCommand implements TabExecutor {
             return false;
         }
         switch (args[0]) {
+            case "ask" -> ask(sender, Arrays.copyOfRange(args, 1, args.length));
             case "inventory", "inv" -> inventory(sender);
             case "plan" -> plan(sender, Arrays.copyOfRange(args, 1, args.length));
             case "results" -> results(sender);
@@ -56,6 +65,20 @@ public final class AdminCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         return args.length == 1 ? SUBCOMMANDS.stream().filter(s -> s.startsWith(args[0])).toList() : List.of();
+    }
+
+    private void ask(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            sender.sendMessage("Usage: /minegoon ask <sentence>");
+            return;
+        }
+        if (!desk.enabled()) {
+            sender.sendMessage("Ask needs an OpenRouter key in config.yml.");
+            return;
+        }
+        Commands.Speaker speaker = speaker(sender);
+        String text = String.join(" ", args);
+        Thread.ofVirtual().start(() -> desk.hear(speaker, text));
     }
 
     private void inventory(CommandSender sender) {
