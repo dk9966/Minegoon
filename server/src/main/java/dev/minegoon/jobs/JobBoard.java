@@ -17,7 +17,7 @@ import org.bukkit.Material;
 public final class JobBoard {
 
     private static final String TASK = """
-        SELECT id, owner, owner_name, goal, count, search, status, reason, world, home_x, home_y, home_z,
+        SELECT id, owner, owner_name, goal, count, search, mission_id, status, reason, world, home_x, home_y, home_z,
                avoid, deaths, model_calls, created_at
         FROM tasks
         """;
@@ -33,11 +33,12 @@ public final class JobBoard {
 
     public long createTask(Request request) {
         return db.insert("""
-            INSERT INTO tasks (owner, owner_name, goal, count, search, status, world, home_x, home_y, home_z, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (owner, owner_name, goal, count, search, mission_id, status, world, home_x, home_y, home_z,
+                               created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, request.owner() == null ? null : request.owner().toString(), request.ownerName(),
             request.goal().name(), request.count(), request.search().none() ? null : gson.toJson(request.search()),
-            Task.Status.ACTIVE.name(), request.home().getWorld().getName(), request.home().getX(),
+            request.missionId(), Task.Status.ACTIVE.name(), request.home().getWorld().getName(), request.home().getX(),
             request.home().getY(), request.home().getZ(), System.currentTimeMillis());
     }
 
@@ -150,6 +151,7 @@ public final class JobBoard {
         return new Task(row.getLong("id"), owner == null ? null : UUID.fromString(owner), row.getString("owner_name"),
             Material.valueOf(row.getString("goal")), row.getInt("count"),
             search == null ? SearchOrders.NONE : gson.fromJson(search, SearchOrders.class),
+            row.getObject("mission_id") == null ? null : row.getLong("mission_id"),
             Task.Status.valueOf(row.getString("status")),
             row.getString("reason"), row.getString("world"),
             row.getDouble("home_x"), row.getDouble("home_y"), row.getDouble("home_z"),

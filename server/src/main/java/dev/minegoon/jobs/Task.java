@@ -8,10 +8,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 
-/** One request, such as "get 5 diamond", where to bring the result, and how the player said to search. */
+/**
+ * One request, such as "get 5 diamond", where to bring the result, how the
+ * player said to search, and the mission it is a step of, if any.
+ */
 public record Task(long id, UUID owner, String ownerName, Material goal, int count, SearchOrders search,
-                   Status status, String reason, String world, double homeX, double homeY, double homeZ,
-                   Set<String> avoid, int deaths, int modelCalls, long createdAt) {
+                   Long missionId, Status status, String reason, String world, double homeX, double homeY,
+                   double homeZ, Set<String> avoid, int deaths, int modelCalls, long createdAt) {
 
     public enum Status {
         ACTIVE, PAUSED, DONE, BLOCKED, CANCELLED;

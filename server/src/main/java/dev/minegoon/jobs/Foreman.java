@@ -99,16 +99,39 @@ public final class Foreman {
     }
 
     public synchronized void get(Request request) {
+        long id = post(request);
+        launch("task-" + id, () -> fetch(id));
+    }
+
+    /** Puts a task on the board in place of the one there. It starts once something fetches it. */
+    public synchronized long post(Request request) {
         board.current().ifPresent(old -> finish(old.id(), Task.Status.CANCELLED, "replaced by a new request"));
-        resetSupplies();
         tutor.newTask();
-        long id = board.createTask(request);
-        launch("task-" + id, () -> {
-            say("On it: " + request.count() + " " + ItemSet.key(request.goal()) + ".");
-            if (feasible(id) && replan(id, Set.of())) {
-                work(id);
+        return board.createTask(request);
+    }
+
+    /**
+     * Runs one task to its end on the calling worker thread: planned first when
+     * it has no plan yet, otherwise from where it stopped. A paused task carries
+     * on. Returns the task as it ended, or as it was paused again.
+     */
+    public Task fetch(long taskId) {
+        Task task = board.task(taskId).orElseThrow();
+        if (task.status().finished()) {
+            return task;
+        }
+        if (task.status() == Task.Status.PAUSED) {
+            board.setStatus(taskId, Task.Status.ACTIVE, null);
+        }
+        resetSupplies();
+        if (board.jobs(taskId).isEmpty()) {
+            say("On it: " + task.describe() + ".");
+            if (!feasible(taskId) || !replan(taskId, Set.of())) {
+                return board.task(taskId).orElseThrow();
             }
-        });
+        }
+        work(taskId);
+        return board.task(taskId).orElseThrow();
     }
 
     /**
@@ -208,9 +231,8 @@ public final class Foreman {
     public synchronized void resume() {
         board.current().filter(task -> task.status() == Task.Status.PAUSED).ifPresentOrElse(task -> {
             board.setStatus(task.id(), Task.Status.ACTIVE, null);
-            resetSupplies();
             say("Carrying on with " + task.describe() + ".");
-            launch("task-" + task.id(), () -> work(task.id()));
+            launch("task-" + task.id(), () -> fetch(task.id()));
         }, () -> say("Nothing is paused."));
     }
 
@@ -219,9 +241,8 @@ public final class Foreman {
         board.current().filter(task -> task.status() == Task.Status.ACTIVE)
             .ifPresent(task -> launch("task-" + task.id(), () -> {
                 awaitStanding();
-                resetSupplies();
                 say("Picking up where I left off: " + task.describe() + ".");
-                work(task.id());
+                fetch(task.id());
             }));
     }
 
@@ -278,11 +299,10 @@ public final class Foreman {
         Task task = active.get();
         board.countDeath(task.id());
         board.addFront(task.id(), recover);
-        resetSupplies();
         launch("task-" + task.id(), () -> {
             awaitStanding();
             say("I died. Going back for my things, then I'll carry on.");
-            work(task.id());
+            fetch(task.id());
         });
     }
 
@@ -494,12 +514,7 @@ public final class Foreman {
             }
             Optional<Job> next = board.next(taskId);
             if (next.isEmpty()) {
-                if (board.jobs(taskId).isEmpty()) {
-                    finish(taskId, Task.Status.BLOCKED, "the plan was never saved");
-                    say("I lost the plan for " + task.describe() + ". Ask me again.");
-                } else {
-                    finish(taskId, Task.Status.DONE, null);
-                }
+                finish(taskId, Task.Status.DONE, null);
                 return;
             }
             Job job = next.get();
@@ -688,9 +703,11 @@ public final class Foreman {
         adopt(taskId, avoid, steps(taskId, avoid));
     }
 
+    /** A mission's task leaves handing the items over to the mission. */
     private List<Step> steps(long taskId, Set<String> avoid) throws Planner.Unplannable {
         Task task = board.task(taskId).orElseThrow();
-        return planner.plan(task.goalItems(), task.count(), body.main().call(this::inventory), avoid);
+        List<Step> steps = planner.plan(task.goalItems(), task.count(), body.main().call(this::inventory), avoid);
+        return task.missionId() == null ? steps : steps.stream().filter(step -> !(step instanceof Step.Deliver)).toList();
     }
 
     private void adopt(long taskId, Set<String> avoid, List<Step> steps) {

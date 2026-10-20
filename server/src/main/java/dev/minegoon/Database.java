@@ -76,7 +76,8 @@ public final class Database implements AutoCloseable {
     }
 
     private static final List<Added> ADDED = List.of(
-        new Added("tasks", "search", "TEXT"));
+        new Added("tasks", "search", "TEXT"),
+        new Added("tasks", "mission_id", "INTEGER"));
 
     private final Connection connection;
 
