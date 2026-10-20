@@ -12,7 +12,7 @@ You type `get 5 diamonds` (a `!` in front still works). It works out what that n
 
 It plays fair. It follows survival rules, never gets operator rights, and can't use commands. It's careful with your builds: by default it won't break blocks that look player-made, and it never touches areas you've marked.
 
-Most of the work is done by code: a Paper plugin that mines, crafts, and walks, plus our own code that walks the recipe tree and checks every job against the game. Mine AI MCP's action list is the spec for those hands, not a program we run. A model (through OpenRouter) reads free-text chat, and it also chooses the next move whenever the helper is about to head out, a search comes up empty, or a step fails.
+Most of the work is done by code: a Paper plugin that mines, crafts, and walks, plus our own code that walks the recipe tree and checks every job against the game. Mine AI MCP's action list is the spec for those hands, not a program we run. A model (through OpenRouter) reads free-text chat and works through requests that are more than one command, one tool at a time. It also chooses the next move whenever the helper is about to head out, a search comes up empty, or a step fails.
 
 On the technical side: Apex stays your world, switched from vanilla to **Paper 26.3**. Paper is the same game with a place to load your own server code. Your girlfriend keeps the normal launcher and joins the same address. The helper will live inside that server, so it never logs into Microsoft and never needs its own account. Online mode stays on, so real players still do.
 
@@ -191,7 +191,9 @@ All model calls go through OpenRouter, so swapping models is a config change.
 
 | Use | Model | When |
 |---|---|---|
-| Turning free-text chat into a command | Small, fast model (Gemini Flash or Sonnet class) | When you talk to the bot instead of typing a `!` command |
+| Reading a sentence aimed at the helper: answer it, act on it, or start a mission | `desk-model` in the config, small and fast | When you talk to the bot instead of typing a command |
+| Writing a mission's plan and handling surprises | `planner-model` in the config, a strong model | At the start of a mission, after a failed step, or after news such as a death |
+| A mission's turns that go to plan | `desk-model` | Every other mission turn |
 | A new idea when the knowledge falls short | `advice-model` in the config | A search came up dry, or a step failed six times |
 | Everything else | No model | Recipes, crafting, smelting, searching, fighting, reflexes, checks, retreats, handing items over |
 
@@ -221,7 +223,8 @@ minegoon/
     knowledge/    where things are, how to look for them, and lessons kept
     trips/        searching, going down, fighting, retreat rules, returning to you
     safety/       protected blocks and zones
-    chat/         commands and the free-text parser
+    chat/         commands, chat, and the console command
+    agent/        the front desk, missions, and the tools a model can call
     models/       OpenRouter calls and briefings
   scripts/        practice-run script
 ```
@@ -287,8 +290,37 @@ Done after that: three full skills passes (11 to 13). Pass 13 got 45 of 57 runs,
 
 Done October 15, 2026: real game speed. Passes 11 to 13 ran the helper's loops faster than the game's tick, so it mined about three times faster than a player could. Every loop now takes one real tick, which dropped pass 14 to 37 of 57 and showed a set of bugs, mostly in jungles: vines, canopies, sand refilling dug stairs, magma, a walk home that never fought, and a step clock that let one walk hang for minutes. All are fixed (see "Passes 14 to 21" in `05-long-tasks.md`). The one-repeat pass after most of the fixes got 14 of 19, including a diamond in 14 minutes. Scores from before and after the change are not comparable.
 
+### Phase: the agent loop
+
+Written October 20, 2026. Built and unit tested. It has not had a lab pass yet.
+
+The short story: before this, a sentence that named the helper was turned into one of the fixed commands. So "strip mine for a diamond" or "get logs and stone, then come back to me" could not be asked at all. Now the helper works a request like that out for itself. A strong model reads it and writes a short plan. Then the helper goes through it one step at a time. On each turn a model picks one tool, such as "get 4 logs" or "come back", the game runs it, and the result goes into the mission's log for the next turn to read. Most turns go to a cheap model. The strong one is called again only when something goes wrong. The game, not the model, decides when the request is done.
+
+The pieces:
+
+- **The front desk** (`agent/FrontDesk.java`). Every sentence that names the helper gets one turn from the cheap model. That turn answers a question, reports status, inventory or what is around, runs an instant command (come, give, stop, pause, resume, protect, allow, watch, back), starts a plain get, starts a mission, or adds to the running one. `/minegoon ask <sentence>` does the same from the console. Typed commands, and plain ones such as `get me 5 diamonds`, still never reach a model. The old chat parser (`IntentParser`) is gone.
+- **Missions** (`agent/MissionRunner.java`, `jobs/MissionBoard.java`). A mission is a row in the `missions` table: the request, the plan, and a log with one line for each tool call and its result. Notes go in the log as well: a death, a restart, the player adding something. Every turn gets a short briefing built fresh from that row: the request, the plan, the log, where the helper is and what it holds, and the turn count. It never gets a chat history. So each turn costs about the same, and a mission carries on after a restart.
+- **Which model takes the turn.** The planner model (`openrouter.planner-model`) takes it when there is no plan, the last call failed, or there is a new note. Otherwise the desk model (`openrouter.desk-model`) does.
+- **The tools wrap what the helper can already do** (`agent/MissionTools.java`): `get_items`, `bring_back`, `give`, `come_to`, `sleep`, `fight`, `plan_preview`, `look_around`, `inventory`, `say`, plus `write_plan`, `finish` and `give_up`. `get_items` runs the same task code as `!get`. A mission's tasks keep what they get, and `bring_back` hands it over.
+- **Search orders.** `get_items` can name the ways to search (`cliff`, `peak`, `cave`, `cavern`, `dig`, `roam`) and the biomes to search in. These go before the lessons and the knowledge file. Being ordered is now the only way the helper strip mines (`dig`) for something.
+- **The game checks "done".** The plan says what done looks like: holding so many of an item, or standing within so many blocks of a player (for a console request, of the spot where it was asked). `finish` is refused until those are true.
+- **Limits** (`agent:` in `config.yml`): 40 turns, 12 planner calls, 90 minutes, and one tool failing the same way twice. Each one stops the mission, and the helper says why.
+- **Stop, pause, come, death and restarts** all reach the mission. If a `get_items` was running when the server stopped, its task resumes. Any other call that was running is marked interrupted, and the planner decides what to do next.
+- **Logs.** Every turn writes an `agent` event with the model, the tool, its arguments, the result, the tokens and the cost. `/minegoon results` lists recent missions with their turns, planner calls and cost. `results.jsonl` gets a line for each mission and each desk turn.
+- **The lab.** `scripts/long-tasks.sh N agent` says five requests to the helper, and runs the typed gets for the same work next to them (see `05-long-tasks.md`). It needs the OpenRouter key in the lab's `config.yml`.
+
+Changed from the plan while building:
+
+- `bring_back` has no destination. Like `!get`, it hands the items to whoever asked.
+- "Done" is one list of checks for the whole request, not one check per step.
+- `give_up` was added, so the planner can stop a request it cannot do and say why.
+- The desk has its own `get` tool for a request for one item, so a simple request costs one cheap call and no planner call.
+
+Next for this phase: the first agent lab pass. After that, new abilities come in as new tools: opening chests, placing a block at a spot, following a player. Each one is added only after it passes its own lab test. The loop itself does not change.
+
 Next:
 
+- The first agent lab pass (`scripts/long-tasks.sh 1 agent`), with the OpenRouter key in the lab config.
 - A full three-repeat skills pass on an idle machine. The last one ran while the machine was busy and the server stalled, so the centring fix for vines and the armed walk home have no full pass yet.
 - Sheep, amethyst, and diamonds, worked on in parallel.
 - Moving the task-status writes off the server thread.
@@ -298,8 +330,8 @@ Next:
 
 - Build: `cd server && ./gradlew build`. The jar is `server/build/libs/minegoon-0.1.0.jar`. Gradle fetches Java 25 itself if needed.
 - Practice: `scripts/practice.sh 10 5 diamond` builds, boots the Docker server on `127.0.0.1:25565`, runs 10 trips, and saves one line per trip under `scripts/results/`. `FRESH=1` regenerates the world from the fixed seed. The script sets the time to day before each trip so runs are comparable.
-- Console: `/minegoon get|status|inventory|stop|pause|resume|come|give|protect|allow` mirror the chat commands, including the plain wording (`/minegoon get me a few diamonds`). `inventory` from the console prints the contents instead of opening a window. `/minegoon plan 5 diamond` prints the plan without doing it. `/minegoon results` lists recent tasks. `/minegoon reset` (practice only, `lab: true`) sends the helper back to spawn empty-handed.
-- Model calls: put the OpenRouter key in `plugins/Minegoon/config.yml` on the server. Without it, direct commands still work (with or without `!`), other sentences are ignored, searches walk without asking, and a failed step retries once and then replans.
+- Console: `/minegoon get|status|inventory|stop|pause|resume|come|give|protect|allow` mirror the chat commands, including the plain wording (`/minegoon get me a few diamonds`). `inventory` from the console prints the contents instead of opening a window. `/minegoon plan 5 diamond` prints the plan without doing it. `/minegoon ask <sentence>` sends a sentence to the front desk as if said in chat. `/minegoon results` lists recent missions and tasks. `/minegoon reset` (practice only, `lab: true`) sends the helper back to spawn empty-handed.
+- Model calls: put the OpenRouter key in `plugins/Minegoon/config.yml` on the server. Without it, direct commands still work (with or without `!`), other sentences are ignored, there are no missions, searches walk without asking, and a failed step retries once and then replans.
 
 ### What changed from the plan while building
 
@@ -326,7 +358,7 @@ Code knows:
 - Night with no sword: craft a wooden sword. Night on the surface: make a bed if needed, sleep, pick the bed back up.
 - Nothing of this source in range, but another source is known: the model is told that, and it can switch. With no key, the code switches on its own.
 
-The model does four things: turn free-text chat into a command, choose the move before a gather, hunt, grow, or fill, choose again when that search is empty, and choose again when any step fails. A third failure stops the task without another call.
+Inside a task, the model does three things: choose the move before a gather, hunt, grow, or fill, choose again when that search is empty, and choose again when any step fails. A third failure stops the task without another call.
 
 Still not scripted, because they are a judgment or a different kind of action: building a shelter, fishing, villager trades, opening chests, and killing creepers for gunpowder. A creeper chase that just walks up and hits it blows the helper up.
 

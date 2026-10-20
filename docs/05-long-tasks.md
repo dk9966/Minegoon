@@ -335,3 +335,31 @@ Every drowning in the saved runs had the same cause: nothing watched the helper'
 | trek (crosses an ocean) | 3/3 | - |
 
 Still open: a flooded space with no air within 12 blocks and a roof that cannot be dug. The reflex then just swims up and hopes. A player would place a block for an air pocket, or dig sideways toward air.
+
+## The agent suite
+
+Written October 20, 2026. No pass has been run yet. Record each pass here like the ones above.
+
+The other suites type a command. This one says a sentence to the helper by name, through `/minegoon ask`, so a model reads it (see "Phase: the agent loop" in `04-mvp-plan.md`). It checks two things: that the helper does what the sentence asked, and that the typed commands for the same work still run as before.
+
+```
+scripts/long-tasks.sh 1 agent                       # every agent task
+scripts/long-tasks.sh 2 agent say-wool,sheep        # some of them
+```
+
+It needs `openrouter.api-key` in the lab server's `plugins/Minegoon/config.yml`. Without it, the first spoken trip stops the lane and says so.
+
+| Task | Said or typed | Passes when |
+|---|---|---|
+| say-strip-mine | "strip mine for 1 diamond", with the deep kit | Done, and some `get_items` call ordered `dig` |
+| say-wool | "get 2 white wool from the plains" | Done, and some `get_items` call ordered the `plains` biome |
+| say-logs-stone | "get 4 logs and 4 cobblestone, then come back to me" | Done, with two `get_items` calls and then `come_to` |
+| say-carrying | "what are you carrying?" | One desk turn, `inventory`, and no mission |
+| say-bedrock | "get me bedrock" | No mission, and it says why it cannot |
+| diamonds | `get 1 diamond`, with the deep kit | Done, as in the skills suite |
+| sheep | `get 2 white_wool` | Done, as in the skills suite |
+| bedrock | `get 1 bedrock` | Stopped with a reason, as in the skills suite |
+
+The two-item trip and the question have no typed command of their own, so they have no typed twin.
+
+A spoken trip ends at the first of these lines in `results.jsonl`: its mission's line, the line of the task a plain get started, or a desk turn that started neither. Each record also keeps the mission's calls, its turns, its planner calls, and the cost of every model call in the trip, desk turns included. The summary's notes show turns, planner calls and cost for each run, and what went wrong for a run that failed. The trip's text file lists each call and whether the game confirmed it.
