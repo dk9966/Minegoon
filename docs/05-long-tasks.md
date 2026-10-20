@@ -349,6 +349,8 @@ scripts/long-tasks.sh 2 agent say-wool,sheep        # some of them
 
 It needs `openrouter.api-key` in the lab server's `plugins/Minegoon/config.yml`. Without it, the first spoken trip stops the lane and says so.
 
+With no key, `scripts/scripted_model.py` can stand in for the models. It answers each desk turn from words in the sentence, and each mission with a fixed plan for its request. That checks that chat, the desk, missions, tools and results work in a real game, but not what a real model would choose. Run it on the machine, then set `api-key: stand-in` and `url: http://172.17.0.1:8765/api/v1/chat/completions` under `openrouter:` in `infra/data/plugins/Minegoon/config.yml` before the template world is made. Every request and reply goes to `scripts/scripted-model.jsonl`.
+
 | Task | Said or typed | Passes when |
 |---|---|---|
 | say-strip-mine | "strip mine for 1 diamond", with the deep kit | Done, and some `get_items` call ordered `dig` |
@@ -363,3 +365,27 @@ It needs `openrouter.api-key` in the lab server's `plugins/Minegoon/config.yml`.
 The two-item trip and the question have no typed command of their own, so they have no typed twin.
 
 A spoken trip ends at the first of these lines in `results.jsonl`: its mission's line, the line of the task a plain get started, or a desk turn that started neither. Each record also keeps the mission's calls, its turns, its planner calls, and the cost of every model call in the trip, desk turns included. The summary's notes show turns, planner calls and cost for each run, and what went wrong for a run that failed. The trip's text file lists each call and whether the game confirmed it.
+
+### Agent pass 1, with the stand-in model
+
+October 20, 2026. One repeat, from spawn, with `scripts/scripted_model.py` instead of a real model. So this pass shows that the parts work together in a real game, not how good a real model's choices are.
+
+| Task | Done | Time (s) | Notes |
+|---|---|---|---|
+| say-strip-mine | 1/1 | 779 | 3 turns, 1 planner call. The search went `dig` 7 times, then `peak` twice from the knowledge file. |
+| say-wool | 1/1 | 414 | 3 turns, 1 planner call. The task carried the `plains` order. |
+| say-logs-stone | 1/1 | 257 | 5 turns, 1 planner call. The planner wrote the plan; the desk model made the four calls after it. |
+| say-carrying | 1/1 | 5 | One desk turn: "Holding nothing." No mission. |
+| say-bedrock | 1/1 | 5 | One desk answer saying why. No mission. |
+| diamonds (typed) | 0/1 | 903 | Stuck on jungle vines at -122 87 -55, the stall in "Still broken after pass 21". |
+| sheep (typed) | 0/1 | 302 | Timed out still roaming for sheep, as in skills pass 30. The spoken wool trip took 414 s, so the 5-minute limit is part of it. |
+| bedrock (typed) | 1/1 | 1 | Refused up front, as before. |
+
+Both typed failures are open problems in the task code from before this phase; the typed gets ran the same task code and wrote their result lines as before. Two more checks by hand on the same server:
+
+- **Stop during a mission.** `stop` while the first `get_items` ran ended the mission and its task, both "stopped by a player", each with its own result line.
+- **Restart during a mission.** Restarting the server while the first `get_items` ran: the helper said "Picking up where I left off", the same task carried on, and the mission finished in 5 turns with no repeated call.
+
+One thing to watch with a real model: every line of the mission log repeats the helper's state ("Now at ... in jungle, health ..."), so a long mission's briefing grows by about that much per turn.
+
+Next: the same pass with a real key, three repeats.
