@@ -2,12 +2,15 @@ package dev.minegoon.trips;
 
 import dev.minegoon.actions.Hands;
 import dev.minegoon.actions.Look;
+import dev.minegoon.actions.Surfacing;
 import dev.minegoon.spawn.FakePlayer;
 import dev.minegoon.spawn.FakePlayer.Controls;
 import dev.minegoon.spawn.Helper;
 import dev.minegoon.world.Blocks;
 import dev.minegoon.world.Pos;
+import dev.minegoon.world.path.Air;
 import java.util.Comparator;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -22,13 +25,17 @@ import org.bukkit.inventory.PlayerInventory;
 /**
  * What the helper does on its own every tick, whatever job it is on: empty a
  * water bucket under itself before a fall lands, get out of lava or off a
- * magma block, eat when hungry, and hit monsters that come close. Eating uses
- * the off hand so the tool in the main hand stays put. Eating and hitting wait
- * while a real fight has the body; falls and burns do not. Main thread only.
+ * magma block, come up for air before it runs out, eat when hungry, and hit
+ * monsters that come close. Eating uses the off hand so the tool in the main
+ * hand stays put. Eating and hitting wait while a real fight has the body;
+ * falls, burns and breathing do not. Main thread only.
  */
 public final class Reflexes {
 
     static final int EAT_BELOW = 15;
+    /** Ticks of air still left when the head comes out, whatever the swim up took. */
+    private static final int SPARE_AIR = 100;
+    private static final Controls TREAD = new Controls(0, 0, true, false);
     private static final double FIGHT_RANGE = 3;
     private static final float READY = 0.9f;
     /** Falls up to this far do no damage. */
@@ -41,6 +48,8 @@ public final class Reflexes {
     private final Helper helper;
     private final BooleanSupplier fighting;
     private Pos poured;
+    /** Came up short of air, and stays up until it has its breath back. */
+    private boolean winded;
 
     public Reflexes(Helper helper, BooleanSupplier fighting) {
         this.helper = helper;
@@ -51,10 +60,14 @@ public final class Reflexes {
         Player player = helper.player();
         if (player == null || player.isDead()) {
             poured = null;
+            winded = false;
             return;
         }
         if (player.isInLava() || FakePlayer.grounded(player) && Blocks.harmful(FakePlayer.under(player).getType())) {
             escape(player);
+            return;
+        }
+        if (breathe(player)) {
             return;
         }
         if (player.getTicksLived() % DRESS_EVERY == 0) {
@@ -125,6 +138,29 @@ public final class Reflexes {
             poured = new Pos(at.getBlockX(), floor + 1, at.getBlockZ());
         }
         return true;
+    }
+
+    /**
+     * Under water, works out the swim to the nearest place the head is out, and
+     * sets off once the air left would cover it with only {@link #SPARE_AIR} to
+     * spare, or at once when no air is in reach. Back up, it treads water until
+     * its air is full again. True while it has the body.
+     */
+    private boolean breathe(Player player) {
+        if (!player.isUnderWater()) {
+            winded &= player.isInWater() && !FakePlayer.grounded(player)
+                && player.getRemainingAir() < player.getMaximumAir();
+            if (winded) {
+                helper.override(TREAD);
+            }
+            return winded;
+        }
+        List<Pos> way = Surfacing.way(player);
+        winded |= way == null || player.getRemainingAir() <= Air.ticks(way) + SPARE_AIR;
+        if (winded) {
+            helper.override(Surfacing.along(player, way));
+        }
+        return winded;
     }
 
     /** Swims or jumps toward the nearest column with solid footing that does not burn. */

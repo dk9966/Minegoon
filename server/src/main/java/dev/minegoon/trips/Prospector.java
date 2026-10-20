@@ -40,8 +40,9 @@ public final class Prospector {
     private static final int CLOSE_ENOUGH = 8;
     private static final int UNREACHED_NEAR = 3;
     private static final int MISSES_HERE = 3;
-    private static final int MIN_ROAM = 24;
     private static final int PEAK_ABOVE = 10;
+    /** How far above the best height a cave is still worth walking through. */
+    private static final int CAVERN_ABOVE = 16;
     /** How far a structure seen before is worth walking back to. */
     private static final int REMEMBERED_WITHIN = 1024;
     private static final int BURIED = 8;
@@ -206,7 +207,7 @@ public final class Prospector {
         private int limit(Way way) {
             return switch (way) {
                 case CLIFF, PEAK, ROAM, VISIT -> 3;
-                case CAVE -> 6;
+                case CAVE, CAVERN -> 6;
                 case DIG -> TUNNELS_PER_PASS;
             };
         }
@@ -216,6 +217,7 @@ public final class Prospector {
                 case CLIFF -> walkToFirst(vision.cliffs(TARGETS).stream().map(Vision.Cliff::foot).toList(), checkpoint);
                 case PEAK -> walkToFirst(vision.peaks(mover.feet().y() + PEAK_ABOVE, TARGETS), checkpoint);
                 case CAVE -> cave(checkpoint);
+                case CAVERN -> cavern(checkpoint);
                 case DIG -> dig(checkpoint);
                 case ROAM -> roam(checkpoint);
                 case VISIT -> visit(checkpoint);
@@ -244,6 +246,22 @@ public final class Prospector {
             return walkToFirst(openings, checkpoint);
         }
 
+        /**
+         * Through the cave the helper is in, to the floor in sight furthest from
+         * every place it has looked from. Only a large cave lets the eyes reach
+         * far, and its far end shows the most new wall. It does not climb above
+         * where it stands unless that is still close to the best height.
+         */
+        private boolean cavern(Checkpoint checkpoint) {
+            Pos feet = mover.feet();
+            if (find.best() == null || surface(feet) - feet.y() <= BURIED) {
+                return false;
+            }
+            List<Pos> lookouts = lookouts();
+            int high = Math.max(feet.y(), find.best() + CAVERN_ABOVE);
+            return walkToFirst(vision.floors(find.low(), high, at -> nearest(lookouts, at), TARGETS), checkpoint);
+        }
+
         /** Stairs down to the best height, then tunnels there. Not by hand. */
         private boolean dig(Checkpoint checkpoint) {
             if (!tunneler.armed()) {
@@ -259,18 +277,31 @@ public final class Prospector {
             return tunneler.ahead(TUNNEL, checkpoint);
         }
 
-        /** To the nearest listed biome in sight that is not where the helper already is. */
+        /**
+         * To the nearest ground in sight of a listed biome that is half a sight
+         * from every place already looked from, so the walk shows new ground,
+         * also when the helper is already in that biome.
+         */
         private boolean roam(Checkpoint checkpoint) {
             if (find.biomes().isEmpty()) {
                 return false;
             }
-            Pos feet = mover.feet();
-            List<Pos> patches = vision.biomes().stream()
+            List<Pos> lookouts = lookouts();
+            double apart = Math.pow(vision.radius() / 2.0, 2);
+            List<Pos> patches = vision.patches().stream()
                 .filter(patch -> find.biomes().contains(patch.biome()))
                 .map(Vision.Patch::at)
-                .filter(at -> at.distanceSquared(feet) >= MIN_ROAM * MIN_ROAM)
+                .filter(at -> nearest(lookouts, at) >= apart)
+                .limit(TARGETS)
                 .toList();
             return walkToFirst(patches, checkpoint);
+        }
+
+        /** Every place this search has looked from, and here. */
+        private List<Pos> lookouts() {
+            List<Pos> places = new ArrayList<>(been);
+            places.add(mover.feet());
+            return places;
         }
 
         private boolean walkToFirst(List<Pos> targets, Checkpoint checkpoint) {
@@ -301,7 +332,7 @@ public final class Prospector {
      */
     private void frontier(Checkpoint checkpoint) {
         Pos feet = mover.feet();
-        int surface = ground(vision.around(), feet.x(), feet.z()) + 1;
+        int surface = surface(feet);
         boolean buried = surface - feet.y() > BURIED;
         if (buried && tunneler.armed()) {
             tunneler.turn();
@@ -337,6 +368,16 @@ public final class Prospector {
             }
         }
         throw new ActionFailed("I can't find a way out of here to new ground");
+    }
+
+    /** The first open block over the ground above the feet. */
+    private int surface(Pos feet) {
+        return ground(vision.around(), feet.x(), feet.z()) + 1;
+    }
+
+    /** Squared distance from a spot to the nearest of some places. */
+    private static double nearest(List<Pos> places, Pos at) {
+        return places.stream().mapToDouble(at::distanceSquared).min().orElse(Double.MAX_VALUE);
     }
 
     /** The top block of the ground in a column. Under a canopy of leaves and logs the helper is not buried. */

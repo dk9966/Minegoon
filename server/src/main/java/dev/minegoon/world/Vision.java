@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -13,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.function.ToDoubleFunction;
 import net.minecraft.world.level.block.Block;
 import org.bukkit.ChunkSnapshot;
 import org.bukkit.Location;
@@ -331,13 +333,22 @@ public final class Vision {
      * of caves, deepest first. {@code below} is the highest y worth reporting.
      */
     public List<Pos> caves(int below, int limit) {
+        Pos feet = feet();
+        return floors(feet.y() - CAVE_DEPTH, below,
+            pos -> (feet.y() - pos.y()) - 0.25 * Math.sqrt(pos.distanceSquared(feet)), limit);
+    }
+
+    /**
+     * Open floor under cover that the eyes can see into, between {@code low} and
+     * {@code high}, highest {@code worth} first. Every floor in a column counts,
+     * so caves stacked over each other all show.
+     */
+    public List<Pos> floors(int low, int high, ToDoubleFunction<Pos> worth, int limit) {
         WorldView view = around();
         Pos feet = feet();
-        Sight.Eye eye = eye();
-        record Found(Pos pos, double score) {
-        }
-        List<Found> found = new ArrayList<>();
+        List<Scored> found = new ArrayList<>();
         long reach = (long) radius * radius;
+        int bottom = Math.max(view.minY() + 1, low);
         for (int x = feet.x() - radius; x <= feet.x() + radius; x += 2) {
             for (int z = feet.z() - radius; z <= feet.z() + radius; z += 2) {
                 long dx = x - feet.x();
@@ -345,30 +356,48 @@ public final class Vision {
                 if (dx * dx + dz * dz > reach || !view.covers(x, z)) {
                     continue;
                 }
-                int top = Math.min(view.highest(x, z) - 3, below);
-                int bottom = Math.max(view.minY() + 1, feet.y() - CAVE_DEPTH);
-                boolean covered = false;
-                for (int y = view.highest(x, z); y > bottom; y--) {
-                    Material here = view.type(x, y, z);
-                    if (!Blocks.passable(here)) {
-                        covered |= !Tag.LEAVES.isTagged(here) && !Tag.LOGS.isTagged(here);
-                        continue;
-                    }
-                    if (!covered || y > top || Blocks.water(here)) {
-                        continue;
-                    }
-                    if (Blocks.passable(view.type(x, y + 1, z)) && Blocks.ground(view.type(x, y - 1, z))) {
-                        double distance = Math.sqrt(dx * dx + dz * dz + (double) (y - feet.y()) * (y - feet.y()));
-                        found.add(new Found(new Pos(x, y, z), (feet.y() - y) - 0.25 * distance));
-                    }
-                    break;
+                for (int y : coveredFloors(view, x, z, bottom, high)) {
+                    Pos pos = new Pos(x, y, z);
+                    found.add(new Scored(pos, worth.applyAsDouble(pos)));
                 }
             }
         }
-        found.sort(Comparator.comparingDouble(Found::score).reversed());
+        return inSight(view, found, limit);
+    }
+
+    /**
+     * Cells in one column, top down, with room to stand, ground under them, and
+     * rock or earth somewhere above. Never the top few blocks, which are only overhangs.
+     */
+    private static List<Integer> coveredFloors(WorldView view, int x, int z, int low, int high) {
+        List<Integer> floors = new ArrayList<>();
+        int highest = view.highest(x, z);
+        int top = Math.min(highest - 3, high);
+        boolean covered = false;
+        for (int y = highest; y >= low; y--) {
+            Material here = view.type(x, y, z);
+            if (!Blocks.passable(here)) {
+                covered |= !Tag.LEAVES.isTagged(here) && !Tag.LOGS.isTagged(here);
+                continue;
+            }
+            if (covered && y <= top && !Blocks.water(here)
+                && Blocks.passable(view.type(x, y + 1, z)) && Blocks.ground(view.type(x, y - 1, z))) {
+                floors.add(y);
+            }
+        }
+        return floors;
+    }
+
+    private record Scored(Pos pos, double score) {
+    }
+
+    /** The best scored spots the eyes can see into, best first. */
+    private List<Pos> inSight(WorldView view, List<Scored> found, int limit) {
+        Sight.Eye eye = eye();
+        found.sort(Comparator.comparingDouble(Scored::score).reversed());
         List<Pos> seen = new ArrayList<>();
         int looks = 0;
-        for (Found candidate : found) {
+        for (Scored candidate : found) {
             if (seen.size() == limit || looks++ == MAX_LOOKS) {
                 break;
             }
@@ -415,10 +444,18 @@ public final class Vision {
 
     /** The biomes on the ground in sight, each at its nearest sampled point. */
     public List<Patch> biomes() {
+        Map<String, Patch> nearest = new LinkedHashMap<>();
+        patches().forEach(patch -> nearest.putIfAbsent(patch.biome(), patch));
+        return List.copyOf(nearest.values());
+    }
+
+    /** The ground in sight, sampled every few blocks, nearest first. */
+    public List<Patch> patches() {
         WorldView view = around();
         Pos feet = feet();
-        Map<String, Pos> nearest = new HashMap<>();
-        Map<String, Long> distance = new HashMap<>();
+        record Sample(Patch patch, long distance) {
+        }
+        List<Sample> samples = new ArrayList<>();
         long reach = (long) radius * radius;
         for (int x = feet.x() - radius; x <= feet.x() + radius; x += 8) {
             for (int z = feet.z() - radius; z <= feet.z() + radius; z += 8) {
@@ -430,20 +467,12 @@ public final class Vision {
                 }
                 int top = view.highest(x, z);
                 Biome biome = view.biome(x, top, z);
-                if (biome == null) {
-                    continue;
-                }
-                String name = biome.getKey().getKey();
-                if (d < distance.getOrDefault(name, Long.MAX_VALUE)) {
-                    distance.put(name, d);
-                    nearest.put(name, new Pos(x, top + 1, z));
+                if (biome != null) {
+                    samples.add(new Sample(new Patch(biome.getKey().getKey(), new Pos(x, top + 1, z)), d));
                 }
             }
         }
-        return nearest.entrySet().stream()
-            .sorted(Comparator.comparingLong(entry -> distance.get(entry.getKey())))
-            .map(entry -> new Patch(entry.getKey(), entry.getValue()))
-            .toList();
+        return samples.stream().sorted(Comparator.comparingLong(Sample::distance)).map(Sample::patch).toList();
     }
 
     /** The biome under the helper's feet. */

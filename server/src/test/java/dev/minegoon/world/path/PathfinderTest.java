@@ -5,30 +5,23 @@ import static dev.minegoon.world.Traits.HARMFUL;
 import static dev.minegoon.world.Traits.LAVA;
 import static dev.minegoon.world.Traits.PASSABLE;
 import static dev.minegoon.world.Traits.REPLACEABLE;
-import static dev.minegoon.world.Traits.STANDABLE;
-import static dev.minegoon.world.Traits.UNKNOWN;
 import static dev.minegoon.world.Traits.WATER;
+import static dev.minegoon.world.path.Grid.AIR;
+import static dev.minegoon.world.path.Grid.STONE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.minegoon.world.BlockReader;
-import dev.minegoon.world.Clearance;
 import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
-import dev.minegoon.world.Terrain;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class PathfinderTest {
 
-    private static final int AIR = PASSABLE | REPLACEABLE;
-    private static final int STONE = STANDABLE;
     private static final int POOL = PASSABLE | WATER | REPLACEABLE;
     private static final int MAGMA = LAVA | HARMFUL | REPLACEABLE;
     private static final int LADDER = PASSABLE | CLIMBABLE;
@@ -163,46 +156,5 @@ class PathfinderTest {
 
     private static List<Move> moves(Path path) {
         return path.steps().stream().map(Step::move).distinct().toList();
-    }
-
-    /** Stone below y 0 and air above, 40 blocks each way, and nothing known beyond. */
-    private static final class Grid implements Terrain {
-        private static final int SIZE = 40;
-        private final Map<Pos, Integer> cells = new HashMap<>();
-        private double digTicks = Clearance.IMPOSSIBLE;
-
-        Grid fill(int x1, int y1, int z1, int x2, int y2, int z2, int traits) {
-            for (int x = x1; x <= x2; x++) {
-                for (int y = y1; y <= y2; y++) {
-                    for (int z = z1; z <= z2; z++) {
-                        cells.put(new Pos(x, y, z), traits);
-                    }
-                }
-            }
-            return this;
-        }
-
-        Grid digging(double ticks) {
-            digTicks = ticks;
-            return this;
-        }
-
-        @Override
-        public int traits(int x, int y, int z) {
-            if (Math.abs(x) > SIZE || Math.abs(z) > SIZE || y < -30 || y > 30) {
-                return UNKNOWN;
-            }
-            return cells.getOrDefault(new Pos(x, y, z), y < 0 ? STONE : AIR);
-        }
-
-        @Override
-        public double breakTicks(int x, int y, int z) {
-            return digTicks;
-        }
-
-        @Override
-        public BlockReader blocks() {
-            return null;
-        }
     }
 }

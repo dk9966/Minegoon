@@ -31,7 +31,7 @@ public final class Advisor {
         cliff: walk to a bare rock face in sight
         peak: climb the highest ground in sight
         cave: walk down into the deepest cave opening in sight
-        dig: stair down to the best height and branch mine
+        cavern: underground, walk through the cave to the far end of what is in sight
         roam: walk to one of the listed biomes in sight
         visit: walk to one of the listed structures in sight
         After the list it walks toward unexplored ground and starts over.
@@ -43,7 +43,7 @@ public final class Advisor {
         You judge requests to a Minecraft Java 26.3 survival bot. It has no commands,
         no creative mode, and cannot leave the overworld. It mines, crafts, smelts,
         farms, and hunts, and finds raw things with these moves, looking after each one:
-        cliff, peak, cave, dig, roam (to listed biomes), visit (to listed structures).
+        cliff, peak, cave, cavern, roam (to listed biomes), visit (to listed structures).
         Say whether the request can be done in an ordinary survival overworld. If it
         can, give the moves, biomes, and structures that find the raw thing, and when
         it drops from mining a block, the ids of those blocks. The reason is one short
@@ -124,7 +124,7 @@ public final class Advisor {
                                            Set<String> structures) {
         List<Way> ways = new ArrayList<>();
         for (String name : strings(answer.getAsJsonArray("ways"))) {
-            Way.parse(name).filter(way -> !ways.contains(way)).ifPresent(ways::add);
+            Way.parse(name).filter(way -> way.advisable() && !ways.contains(way)).ifPresent(ways::add);
         }
         List<String> biomes = strings(answer.getAsJsonArray("biomes")).stream().filter(knownBiome).toList();
         List<String> visit = strings(answer.getAsJsonArray("visit")).stream().filter(structures::contains).toList();
@@ -171,7 +171,8 @@ public final class Advisor {
     }
 
     private static String placeProperties(Set<String> structures) {
-        String ways = Arrays.stream(Way.values()).map(way -> "\"" + way.key() + "\"").collect(Collectors.joining(", "));
+        String ways = Arrays.stream(Way.values()).filter(Way::advisable).map(way -> "\"" + way.key() + "\"")
+            .collect(Collectors.joining(", "));
         String visit = structures.stream().map(name -> "\"" + name + "\"").collect(Collectors.joining(", "));
         return """
             "ways": {"type": "array", "items": {"type": "string", "enum": [%s]}},

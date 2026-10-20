@@ -84,8 +84,7 @@ LONG = (
 )
 
 # One skill each, from a head start, so a failure points at one piece.
-DIAMOND_KIT = ("iron_pickaxe:1", "stone_sword:1", "shield:1", "cooked_beef:12", "cobblestone:64",
-               "iron_helmet:1", "iron_chestplate:1", "bow:1", "arrow:16")
+DEEP_KIT = ("iron_pickaxe:1", "stone_axe:1", "shield:1", "cooked_beef:12", "cobblestone:64")
 SKILLS = (
     Task("stone", 16, "cobblestone", 3 * 60, ("wooden_pickaxe:1",)),
     Task("coal", 8, "coal", 5 * 60, ("stone_pickaxe:1",)),
@@ -93,7 +92,7 @@ SKILLS = (
     Task("cow", 3, "beef", 5 * 60),
     Task("sheep", 2, "white_wool", 5 * 60),
     Task("water", 1, "water_bucket", 5 * 60, ("bucket:1",)),
-    Task("diamonds", 1, "diamond", 15 * 60, DIAMOND_KIT),
+    Task("diamonds", 1, "diamond", 15 * 60, DEEP_KIT),
     Task("spar-zombie", 1, "zombie", 3 * 60, ("stone_sword:1", "shield:1"), spar="zombie"),
     Task("spar-skeleton", 1, "skeleton", 3 * 60, ("stone_sword:1", "shield:1"), spar="skeleton"),
     Task("spar-spider", 1, "spider", 3 * 60, ("stone_sword:1", "shield:1"), spar="spider"),
@@ -102,7 +101,7 @@ SKILLS = (
          spar="skeleton"),
     # Asking the model first: no survival way at all, and a way the knowledge file does not cover.
     Task("bedrock", 1, "bedrock", 2 * 60, impossible=True),
-    Task("amethyst", 1, "amethyst_shard", 8 * 60, ("iron_pickaxe:1",)),
+    Task("amethyst", 1, "amethyst_shard", 8 * 60, DEEP_KIT),
 )
 # Getting about: each course is carved around wherever the helper stands, then timed.
 MOVES = (
@@ -111,6 +110,8 @@ MOVES = (
     Task("pit", 1, "pit", 2 * 60, ("stone_pickaxe:1",), course="pit"),
     Task("ravine", 1, "ravine", 2 * 60, ("cobblestone:32",), course="ravine"),
     Task("gap", 1, "gap", 2 * 60, course="gap"),
+    Task("swim", 1, "swim", 2 * 60, course="swim"),
+    Task("breath", 1, "breath", 2 * 60, course="breath"),
 )
 SUITES = {"long": LONG, "skills": SKILLS + MOVES, "moves": MOVES}
 # Every lane copies one world, so they share its spawn. The helper is moved
@@ -590,6 +591,21 @@ def carve(lane: Lane, course: str) -> list[str]:
         fill(lane, x + 3, y - 4, z - 10, x + 4, y - 4, z + 10, "stone")
         fill(lane, x + 3, y - 3, z - 10, x + 4, y - 1, z + 10, "air")
         return [str(x + 8), str(y), str(z)]
+    if course == "swim":
+        # A lake: deep water whose surface is a block below the banks, so getting out means climbing.
+        fill(lane, x + 14, y, z - 10, x + 26, y + 8, z + 10, "air")
+        fill(lane, x + 2, y - 5, z - 11, x + 26, y - 1, z + 11, "stone")
+        fill(lane, x + 3, y - 4, z - 10, x + 22, y - 1, z + 10, "water")
+        return [str(x + 25), str(y), str(z)]
+    if course == "breath":
+        # Starts on the floor of a pool under a lid it cannot dig; the only air is a hole six blocks off.
+        fill(lane, x + 14, y, z - 10, x + 18, y + 8, z + 10, "air")
+        fill(lane, x + 2, y - 7, z - 4, x + 18, y - 2, z + 4, "stone")
+        fill(lane, x + 2, y - 1, z - 4, x + 18, y - 1, z + 4, "obsidian")
+        fill(lane, x + 3, y - 6, z - 3, x + 15, y - 2, z + 3, "water")
+        fill(lane, x + 11, y - 1, z - 1, x + 12, y - 1, z + 1, "water")
+        in_lane(lane, "tp", lane.helper, f"{x + 5.5}", str(y - 6), f"{z + 0.5}")
+        return [str(x + 16), str(y), str(z)]
     raise RuntimeError(f"no course named {course}")
 
 

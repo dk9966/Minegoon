@@ -1,6 +1,7 @@
 package dev.minegoon.knowledge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,10 +23,19 @@ class KnowledgeTest {
         Knowledge knowledge = shipped();
         assertEquals(List.of(), knowledge.problems(biome -> true, thing -> true));
         Find iron = knowledge.find(List.of("iron_ore"));
-        assertEquals(List.of(Way.CLIFF, Way.PEAK, Way.CAVE, Way.DIG), iron.ways());
+        assertEquals(List.of(Way.CLIFF, Way.PEAK, Way.CAVE, Way.CAVERN), iron.ways());
         assertEquals(14, iron.best());
         assertEquals("deep", knowledge.find(List.of("diamond_ore")).trip());
         assertTrue(knowledge.structureNames().contains("village"));
+    }
+
+    @Test
+    void oresAreFoundInCavesNotByStripMining() throws IOException {
+        Knowledge knowledge = shipped();
+        for (String ore : List.of("coal_ore", "copper_ore", "iron_ore", "lapis_ore", "gold_ore", "redstone_ore",
+                "diamond_ore", "emerald_ore", "amethyst_cluster")) {
+            assertFalse(knowledge.find(List.of(ore)).ways().contains(Way.DIG), ore);
+        }
     }
 
     @Test

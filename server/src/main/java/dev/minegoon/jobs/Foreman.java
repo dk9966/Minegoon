@@ -32,6 +32,7 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -366,12 +367,12 @@ public final class Foreman {
             bedding = false;
             return false;
         }
-        if (!hasSword() && !rearming && !Tag.ITEMS_SWORDS.isTagged(task.goal())
+        if (!hasWeapon() && !rearming && !Tag.ITEMS_SWORDS.isTagged(task.goal())
             && prepend(task, ItemSet.of(Material.WOODEN_SWORD), 1, "It's night, so I'll make a sword first.")) {
             rearming = true;
             return true;
         }
-        if (hasSword()) {
+        if (hasWeapon()) {
             rearming = false;
         }
         if (!crew.sleeper().nightOnSurface() || job.step() instanceof Step.Sleep || bedding
@@ -404,7 +405,7 @@ public final class Foreman {
             sheltered = false;
             return false;
         }
-        if (sheltered || hasSword()) {
+        if (sheltered || hasWeapon()) {
             return false;
         }
         sheltered = true;
@@ -451,9 +452,11 @@ public final class Foreman {
         };
     }
 
-    private boolean hasSword() {
-        return body.main().call(() -> Tag.ITEMS_SWORDS.getValues().stream()
-            .anyMatch(sword -> Hands.count(body.player(), ItemSet.of(sword)) > 0));
+    /** A sword or an axe: the fighter swings either. */
+    private boolean hasWeapon() {
+        return body.main().call(() -> Stream.of(Tag.ITEMS_SWORDS, Tag.ITEMS_AXES)
+            .flatMap(tag -> tag.getValues().stream())
+            .anyMatch(weapon -> Hands.count(body.player(), ItemSet.of(weapon)) > 0));
     }
 
     private int held(Material item) {

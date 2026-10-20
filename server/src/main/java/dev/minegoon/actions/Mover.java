@@ -6,7 +6,6 @@ import static dev.minegoon.world.Traits.WATER;
 import static dev.minegoon.world.Traits.has;
 
 import dev.minegoon.spawn.FakePlayer;
-import dev.minegoon.spawn.FakePlayer.Controls;
 import dev.minegoon.world.BlockReader;
 import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
@@ -48,7 +47,8 @@ public final class Mover {
     /** A leg must bring the goal at least this many ticks closer to count as progress. */
     private static final double PROGRESS = Costs.SPRINT;
     private static final int SETTLE_TICKS = 100;
-    private static final int SURFACE_TICKS = 40;
+    /** Enough to swim the longest way to air there is, with time to dig through a roof. */
+    private static final int SURFACE_TICKS = 200;
 
     private final Body body;
     private final Miner miner;
@@ -212,23 +212,22 @@ public final class Mover {
         return cells;
     }
 
-    /** Rises while the eyes are underwater, digging out a block above the head if one is there. */
+    /**
+     * Swims to the nearest air while the eyes are under water, since no route
+     * starts with the head under. With no air in reach it rises, digging out a
+     * block over the head if one is there.
+     */
     private void surface(Checkpoint checkpoint) {
-        for (int tick = 0; tick < SURFACE_TICKS; tick++) {
+        for (int tick = 0; tick < SURFACE_TICKS && body.main().call(() -> body.player().isUnderWater()); tick++) {
             checkpoint.check();
-            Pos above = body.main().tick(() -> {
+            Pos roof = body.main().tick(() -> {
                 Player player = body.player();
-                if (!player.isUnderWater()) {
-                    return null;
-                }
-                body.helper().drive(new Controls(0, 0, true, false));
-                return Pos.standing(player.getLocation()).offset(0, 2, 0);
+                List<Pos> way = Surfacing.way(player);
+                body.helper().drive(Surfacing.along(player, way));
+                Pos above = Pos.standing(player.getLocation()).offset(0, 2, 0);
+                return way == null && !has(traits(body.live(), above), PASSABLE) ? above : null;
             });
-            if (above == null) {
-                return;
-            }
-            boolean open = body.main().call(() -> has(traits(body.live(), above), PASSABLE));
-            if (!open && !miner.mine(above).confirmed()) {
+            if (roof != null && !miner.mine(roof).confirmed()) {
                 return;
             }
         }

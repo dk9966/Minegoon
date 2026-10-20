@@ -33,8 +33,10 @@ public final class Lessons {
             return wins > 0;
         }
 
+        /** Only the moves a model may suggest, whatever the saved file holds. */
         Find asFind() {
-            return new Find(ways, Integer.MIN_VALUE, Integer.MAX_VALUE, null, biomes, visit, null);
+            return new Find(ways.stream().filter(Way::advisable).toList(), Integer.MIN_VALUE, Integer.MAX_VALUE, null,
+                biomes, visit, null);
         }
     }
 

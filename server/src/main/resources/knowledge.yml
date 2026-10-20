@@ -7,8 +7,11 @@
 #   cliff   walk to the foot of a bare rock face in sight
 #   peak    climb the highest ground in sight
 #   cave    walk down into the deepest cave opening in sight, again and again
-#   dig     stair down to the best height, then branch mine there
-#   roam    walk to the nearest listed biome in sight
+#   cavern  underground, walk through the cave to the floor in sight furthest
+#           from everywhere already looked from, near the best height
+#   dig     stair down to the best height, then branch mine there. Only for
+#           rock: ores are found in caves, never by strip mining.
+#   roam    walk into a listed biome in sight, to ground not looked at yet
 #   visit   walk to a listed structure in sight
 #
 # When the list runs out the helper walks toward ground it has not seen yet and
@@ -23,18 +26,20 @@
 # Deepslate ores share the entry of their stone version.
 # Heights: https://minecraft.wiki/w/Ore (Java 1.18 and later)
 
+# Deep ores: down the caves in sight, through them near the best height, and
+# from the surface toward mountains, which have more cave openings.
 find:
-  coal_ore:     {y: [0, 320],   best: 45,  ways: [cliff, peak, cave, dig]}
-  copper_ore:   {y: [-16, 112], best: 43,  ways: [cliff, cave, dig], biomes: [dripstone_caves]}
-  iron_ore:     {y: [-64, 320], best: 14,  ways: [cliff, peak, cave, dig], trip: mine}
-  lapis_ore:    {y: [-64, 64],  best: -2,  ways: [cave, dig]}
-  gold_ore:     {y: [-64, 256], best: -18, ways: [roam, cave, dig], biomes: [badlands, eroded_badlands, wooded_badlands]}
-  redstone_ore: {y: [-64, 16],  best: -59, ways: [cave, dig], trip: deep}
-  diamond_ore:  {y: [-64, 16],  best: -59, ways: [cave, dig], trip: deep}
+  coal_ore:     {y: [0, 320],   best: 45,  ways: [cliff, peak, cave, cavern]}
+  copper_ore:   {y: [-16, 112], best: 43,  ways: [cliff, cave, cavern], biomes: [dripstone_caves]}
+  iron_ore:     {y: [-64, 320], best: 14,  ways: [cliff, peak, cave, cavern], trip: mine}
+  lapis_ore:    {y: [-64, 64],  best: -2,  ways: [cave, cavern, peak]}
+  gold_ore:     {y: [-64, 256], best: -18, ways: [roam, cave, cavern], biomes: [badlands, eroded_badlands, wooded_badlands]}
+  redstone_ore: {y: [-64, 16],  best: -59, ways: [cave, cavern, peak], trip: deep}
+  diamond_ore:  {y: [-64, 16],  best: -59, ways: [cave, cavern, peak], trip: deep}
   emerald_ore:
     y: [-16, 320]
     best: 85
-    ways: [roam, cliff, peak, dig]
+    ways: [roam, cliff, peak]
     biomes: [meadow, cherry_grove, grove, snowy_slopes, jagged_peaks, frozen_peaks, stony_peaks,
              windswept_hills, windswept_gravelly_hills, windswept_forest]
 
@@ -46,7 +51,7 @@ find:
   tuff:         {y: [-64, 16], best: -20, ways: [cave, dig]}
   calcite:      {ways: [roam, peak, cave], biomes: [stony_peaks]}
   # Geodes are hidden in stone, but most have a crack, and caves and ravines cut through them.
-  amethyst_cluster: {y: [-58, 30], best: -14, ways: [visit, cave, dig], visit: [geode]}
+  amethyst_cluster: {y: [-58, 30], best: -14, ways: [visit, cave, cavern, peak], visit: [geode], trip: deep}
   dripstone_block: {ways: [cave], biomes: [dripstone_caves]}
   obsidian:     {y: [-64, 16], best: -54, ways: [visit, cave], visit: [ruined_portal]}
   gravel:       {ways: [cliff, roam, cave], biomes: [windswept_gravelly_hills, stony_shore, river, ocean, deep_ocean]}
@@ -81,14 +86,20 @@ find:
   melon:        {ways: [roam], biomes: [jungle, sparse_jungle, bamboo_jungle]}
   cactus:       {ways: [roam], biomes: [desert, badlands]}
   bamboo:       {ways: [roam], biomes: [bamboo_jungle, jungle]}
-  cobweb:       {ways: [visit, cave, dig], best: 0, y: [-64, 64], visit: [mineshaft]}
+  cobweb:       {ways: [visit, cave, cavern], best: 0, y: [-64, 64], visit: [mineshaft]}
 
   water:        {ways: [roam], biomes: [river, ocean, lukewarm_ocean, cold_ocean, beach, swamp, mangrove_swamp]}
-  lava:         {y: [-64, 320], best: -55, ways: [cave, dig]}
+  lava:         {y: [-64, 320], best: -55, ways: [cave, cavern]}
 
   cow:          {ways: [roam], biomes: [plains, sunflower_plains, meadow, forest, flower_forest, birch_forest, savanna, taiga, windswept_hills]}
   pig:          {ways: [roam], biomes: [plains, sunflower_plains, forest, flower_forest, birch_forest, savanna, taiga]}
-  sheep:        {ways: [roam], biomes: [plains, sunflower_plains, meadow, windswept_hills, forest, taiga, savanna]}
+  # A sheep's colour follows its biome. White, the wool beds and most recipes
+  # take, is common only in temperate biomes; cold ones are mostly black and
+  # warm ones mostly brown. https://minecraft.wiki/w/Sheep#Spawning
+  sheep:
+    ways: [roam]
+    biomes: [plains, sunflower_plains, meadow, cherry_grove, forest, flower_forest, birch_forest,
+             old_growth_birch_forest, dark_forest, swamp]
   chicken:      {ways: [roam], biomes: [plains, sunflower_plains, forest, flower_forest, birch_forest, savanna, taiga, jungle]}
   rabbit:       {ways: [roam], biomes: [desert, flower_forest, taiga, snowy_plains, meadow, cherry_grove]}
   spider:       {ways: [cave, roam], biomes: [plains, forest, taiga, desert]}
@@ -104,19 +115,15 @@ trips:
   # iron is found well above that, and a broken pickaxe is replaced anyway.
   mine:
     stone_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
-  # The stairs down to y=-59 are about 400 blocks of digging, more than one
-  # iron pickaxe lasts (250). Stone pickaxes (131 each) dig the way and the
-  # first tunnels; the iron one is kept for the ore.
+  # Down the caves, not stairs, so the digging is short: one iron pickaxe,
+  # which diamond needs. The axe is the weapon. Blocks are for climbing and
+  # bridging out of a cave.
   deep:
-    stone_pickaxe: 4
+    iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 1
+    stone_axe|iron_axe|diamond_axe|netherite_axe: 1
+    shield: 1
     cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: 6
     cobblestone|cobbled_deepslate: 32
-    stone_sword|iron_sword|diamond_sword: 1
-    shield: 1
-    iron_helmet|diamond_helmet|netherite_helmet: 1
-    iron_chestplate|diamond_chestplate|netherite_chestplate: 1
-    bow?: 1
-    arrow?: 16
 
 # How to tell a structure from blocks in sight. Each kind of mark block adds its
 # weight once; a structure counts as seen when the marks within 24 blocks of each

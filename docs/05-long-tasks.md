@@ -131,11 +131,11 @@ One skill per task, from a head start, with short time limits. A failure points 
 | cow | 3 beef | none | Spotting animals, or walking to the biomes they live in. |
 | sheep | 2 white_wool | none | The same, for a rarer animal. |
 | water | 1 water_bucket | bucket | Finding a source and using the bucket on it. |
-| diamonds | 1 diamond | iron pickaxe, sword, shield, food, blocks | The deep trip: kit check, then cave and stairs down to y=-59. |
+| diamonds | 1 diamond | iron pickaxe, stone axe, shield, food, blocks | The deep trip: kit check, then down the caves to y=-59 and through them. |
 | spar-zombie, -skeleton, -spider, -creeper | win a fight | stone sword, shield | The fighter against each kind of mob, spawned 8 blocks away. |
 | spar-skeleton-bow | win a fight | stone sword, shield, bow, 32 arrows | Shooting with the arrow's drop allowed for. |
 | bedrock | 1 bedrock | none | Impossible: the model should refuse it up front. |
-| amethyst | 1 amethyst_shard | iron pickaxe | Nothing in the planner's tables: the model has to say where it comes from. |
+| amethyst | 1 amethyst_shard | the diamonds kit | Nothing in the planner's tables: the model has to say where it comes from. Then the same cave trip as diamonds. |
 | trek, climb, pit, ravine, gap | reach a spot | none | The moves courses: a 300-block walk, a cliff, a 6-deep pit, a ravine, a gap. |
 
 The three repeats start from different places: spawn, (480, -320), and (-560, 640).
@@ -301,3 +301,37 @@ Two chats worked on these at the same time. This one took movement, the harness 
 - **Hanging on to vines while standing.** On a step onto a vine cell, the "hold on" key is the sneak key, and sneaking stops the body at the edge of the block it stands on. Jungle runs stalled with the body 0.30 into the next block, five timeouts in a row. Holding on now waits until the body is off the ground.
 - **Moves pass 8:** trek 2/3 (one death in the ocean), climb 3/3, pit 2/3, ravine 3/3, gap 3/3.
 - **Skills pass 30** (fresh template, animals kept): sheep 1/3, cow 2/3. The jungle start no longer gets stuck between giant trunks. It now walks, but the vine stalls above made it slow. Lane b's sheep run still found none from 4 places. That search lives in `Prospector`.
+
+### Caves for ores, biomes for sheep
+
+Written October 16, 2026. Not run in a pass yet.
+
+The diamond and sheep misses had the same root: the helper was not looking where a player would. Across every saved run the search took 847 `dig` moves and 18 `cave` moves. Diamonds never went down a cave. They cut stairs to y=-59 and strip mined. Sheep runs walked into biomes where white sheep are rare.
+
+- **The cave scan almost never saw a cave.** It stopped each column at the first open cell under cover. That cell is the one under the cave ceiling, so the "room to stand" check failed and the column was dropped. Now every floor in a column counts, and `Vision.caves` and the new `Vision.floors` share that one column walk.
+- **A new move, `cavern`.** Underground, the helper walks through the cave to the floor in sight that is furthest from every place it has already looked from. Only a large cave lets the eyes reach far, so this favours big caves, and the far end shows the most new wall. It stays near the best height and does not climb back above where it already is.
+- **No strip mining for ores.** Every ore now goes cliff, peak, cave, and cavern in some order. Diamonds, redstone, and amethyst are `[cave, cavern, peak]`: down the caves in sight, through them at depth, and from the surface toward mountains, where cave openings are more common. `dig` is only for rock such as stone and deepslate. The model can no longer suggest `dig`, and a saved lesson that holds it has it removed when applied. The saved diamond lesson was "cave, then dig", with 1 win and 14 misses, and it went first on every run.
+- **Deep-trip gear.** It is now an iron pickaxe, an axe, a shield, 6 cooked food, and 32 blocks. It used to be four stone pickaxes, a sword, and iron armour. The stone pickaxes were for the stairs, which are gone, and the armour cost 13 iron. Amethyst uses the same trip. An axe now counts as a weapon, so night does not ask for a sword as well. The skills kit for diamonds and amethyst matches.
+- **Sheep by biome.** Since 1.21.5 a sheep's colour follows its biome. White is common only in temperate biomes (plains, meadow, cherry grove, the forests, swamp). Cold biomes have mostly black sheep and warm ones mostly brown. The sheep list held taiga, savanna, and windswept hills, where the hunt passed over nearly every sheep it saw. Now it lists only the temperate ones.
+- **Roaming inside the right biome.** `roam` used to drop the biome the helper stood in, so in a plains with no sheep in sight it never walked further into the plains. It now goes to the nearest ground of a listed biome that is half a sight (64 blocks) from every place already looked from.
+
+Still open: there is no way to order strip mining yet, so it never happens. Underground with nothing new in sight, the search for new ground still tunnels 48 blocks toward unseen chunks. That is a way to reach the next cave, not a search by tunnel. Removing `dig` from iron and coal may cost runs that start on flat ground with no cave in sight. The next skills pass will show it.
+
+### Never drowning: moves passes 10 to 13
+
+Written October 16, 2026.
+
+Every drowning in the saved runs had the same cause: nothing watched the helper's air. Three ways it happened: it stopped to heal from the drowning damage itself and waited under water; it was caught under the roof of a flooded cave; and it sat on the sea floor while every walk failed at once, because no route can start with the head under water.
+
+- **An air reflex** (`Reflexes.breathe`). Every tick the eyes are under water, it works out the swim to the nearest place the head is out (`world/path/Air.java`, a search through cells the whole body fits in, up to 12 blocks away). It sets off once the air left would only just cover that swim with 5 seconds to spare, or at once when there is no air within reach. Then it treads water until its air is full. It goes before fights and every job, after getting out of lava.
+- **Walks start by surfacing the same way** (`Mover.surface`, using `actions/Surfacing.java`). It used to hold jump for 2 seconds and dig upward, which under a cave roof just bumped the rock. It now swims to the nearest air, and digs upward only when there is none in reach.
+- **Two new courses** in the moves suite. `swim` is a 20-block lake whose surface is a block below the banks. `breath` starts on the floor of a pool under an obsidian lid, with the only air a hole six blocks off, and the goal on the bank past it.
+
+| Course | Before | After |
+|---|---|---|
+| swim | 3/3 | 3/3 |
+| breath | 0/3, drowned in 28s every time | 3/3, in about 12s |
+| breath with no job, so only the reflex can act | - | 3/3 alive at full health after 60s |
+| trek (crosses an ocean) | 3/3 | - |
+
+Still open: a flooded space with no air within 12 blocks and a roof that cannot be dug. The reflex then just swims up and hopes. A player would place a block for an air pocket, or dig sideways toward air.

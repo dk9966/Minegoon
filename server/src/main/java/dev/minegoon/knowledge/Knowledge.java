@@ -22,7 +22,7 @@ public final class Knowledge {
 
     /** A move that takes the helper somewhere worth looking from. */
     public enum Way {
-        CLIFF, PEAK, CAVE, DIG, ROAM, VISIT;
+        CLIFF, PEAK, CAVE, CAVERN, DIG, ROAM, VISIT;
 
         public static Optional<Way> parse(String name) {
             try {
@@ -34,6 +34,11 @@ public final class Knowledge {
 
         public String key() {
             return name().toLowerCase(Locale.ROOT);
+        }
+
+        /** A move a model may suggest. Digging blind is strip mining, which only knowledge.yml asks for. */
+        public boolean advisable() {
+            return this != DIG;
         }
     }
 

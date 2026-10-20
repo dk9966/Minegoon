@@ -62,6 +62,14 @@ class LessonsTest {
     }
 
     @Test
+    void aLessonNeverAddsStripMining() {
+        Lessons lessons = new Lessons(folder.resolve("lessons.json"));
+        lessons.learn("diamond_ore", new Lesson(List.of(Way.CAVE, Way.DIG), List.of(), List.of(), "dig", 0, 0));
+        Find base = new Find(List.of(Way.CAVERN), -64, 16, -59, List.of(), List.of(), null);
+        assertEquals(List.of(Way.CAVE, Way.CAVERN), lessons.apply("diamond_ore", base).ways());
+    }
+
+    @Test
     void aFullFileDropsALessonOnTrialFirst() {
         Lessons lessons = new Lessons(folder.resolve("lessons.json"));
         lessons.learn("kept", advice("worked once"));
