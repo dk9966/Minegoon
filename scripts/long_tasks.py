@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Run the long-task suite, or the quick skills suite, on one Paper server.
+"""Run the long-task suite, or the quick skills, moves or agent suite, on one Paper server.
 
-    long_tasks.py [iteration] [long|skills]
+    long_tasks.py [iteration] [long|skills|moves|agent] [task,...]
 
 See docs/05-long-tasks.md. Three trips run at once, each on its own copy of the
 fresh world, inside one Java process. The world is put back before every trip.
@@ -23,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,7 +58,9 @@ WORLD_NAMES = ("world", "world_nether", "world_the_end")
 class Task:
     """Get `count` of `item`, or with `spar` set, fight that many of that monster.
     `kit` is handed over after the reset, as item:count. An `impossible` task
-    passes when the helper stops it with a reason instead of trying forever."""
+    passes when the helper stops it with a reason instead of trying forever.
+    With `said` set, the request is said to the helper by name instead, and
+    `check` reads the trip's record: it names what went wrong, or is empty."""
     id: str
     count: int
     item: str
@@ -66,6 +69,8 @@ class Task:
     spar: str | None = None
     course: str | None = None
     impossible: bool = False
+    said: str | None = None
+    check: Callable[[dict], str] | None = None
 
 
 # Time limits are a little over twice a good run. A trip still going then is lost.
@@ -113,7 +118,64 @@ MOVES = (
     Task("swim", 1, "swim", 2 * 60, course="swim"),
     Task("breath", 1, "breath", 2 * 60, course="breath"),
 )
-SUITES = {"long": LONG, "skills": SKILLS + MOVES, "moves": MOVES}
+
+
+def ended(record: dict, outcome: str) -> str:
+    return "" if record["outcome"] == outcome else f"ended {record['outcome']}"
+
+
+def ordered(record: dict, word: str) -> str:
+    """Empty when some get_items call's arguments mention `word`, such as a way or a biome."""
+    if any(word in call["args"] for call in record["calls"] if call["tool"] == "get_items"):
+        return ""
+    return f"no get_items with {word}"
+
+
+def dug_for_it(record: dict) -> str:
+    return ended(record, "done") or ordered(record, '"dig"')
+
+
+def searched_plains(record: dict) -> str:
+    return ended(record, "done") or ordered(record, '"plains"')
+
+
+def came_back(record: dict) -> str:
+    tools = [call["tool"] for call in record["calls"]]
+    gets = [index for index, tool in enumerate(tools) if tool == "get_items"]
+    shape = "" if len(gets) >= 2 and "come_to" in tools[gets[-1]:] else "wanted two get_items, then come_to"
+    return ended(record, "done") or shape
+
+
+def told_inventory(record: dict) -> str:
+    if record["mission"]:
+        return "started a mission"
+    return ended(record, "answered") or (
+        "" if [turn["tool"] for turn in record["desk"]] == ["inventory"] else "wanted one inventory turn")
+
+
+def refused(record: dict) -> str:
+    if record["mission"]:
+        return "started a mission"
+    if record["outcome"] not in ("answered", "refused", "blocked") or not record["reason"]:
+        return f"ended {record['outcome']} without saying why"
+    return ""
+
+
+# Said to the helper by name, so a model reads them. The plain gets after them
+# are the typed commands for the same work, to check the fast path did not change.
+# The two-item trip and the question have no typed command of their own.
+AGENT = (
+    Task("say-strip-mine", 1, "diamond", 20 * 60, DEEP_KIT, said="strip mine for 1 diamond", check=dug_for_it),
+    Task("say-wool", 2, "white_wool", 8 * 60, said="get 2 white wool from the plains", check=searched_plains),
+    Task("say-logs-stone", 4, "log", 10 * 60, said="get 4 logs and 4 cobblestone, then come back to me",
+         check=came_back),
+    Task("say-carrying", 0, "inventory", 60, said="what are you carrying?", check=told_inventory),
+    Task("say-bedrock", 1, "bedrock", 2 * 60, said="get me bedrock", check=refused),
+    Task("diamonds", 1, "diamond", 15 * 60, DEEP_KIT),
+    Task("sheep", 2, "white_wool", 5 * 60),
+    Task("bedrock", 1, "bedrock", 2 * 60, impossible=True),
+)
+SUITES = {"long": LONG, "skills": SKILLS + MOVES, "moves": MOVES, "agent": AGENT}
 # Every lane copies one world, so they share its spawn. The helper is moved
 # there before each trip: a fresh world does not move the player back.
 SPAWN = (-32, -48)
@@ -345,10 +407,29 @@ def result_count(data: Path, lane: str | None = None) -> int:
     return sum(1 for line in path.read_text().splitlines() if line.strip())
 
 
-def last_result(data: Path, lane: str | None = None) -> dict:
+def new_results(data: Path, lane: str | None, before: int) -> list[dict]:
+    """The lines after the first `before`, up to one the server is still writing."""
     path = state_dir(data, lane) / "results.jsonl"
-    lines = [line for line in path.read_text().splitlines() if line.strip()]
-    return json.loads(clean(lines[-1]))
+    if not path.exists():
+        return []
+    lines = []
+    for line in [line for line in path.read_text().splitlines() if line.strip()][before:]:
+        try:
+            lines.append(json.loads(clean(line)))
+        except json.JSONDecodeError:
+            break
+    return lines
+
+
+def conversation_end(lines: list[dict]) -> dict | None:
+    """What ends a spoken request: its mission, the task a plain get started, or a desk turn that started neither."""
+    for line in lines:
+        if "mission" in line or ("task" in line and "mission_id" not in line):
+            return line
+        turn = line.get("desk")
+        if turn and not (turn["ok"] and turn["tool"] in ("start_mission", "get")):
+            return line
+    return None
 
 
 def log_size(data: Path) -> int:
@@ -366,31 +447,47 @@ def new_chat(data: Path, offset: int, helper: str) -> list[str]:
     return [clean(line) for line in text.splitlines() if helper in line]
 
 
-def read_behavior(data: Path, lane: str | None = None) -> tuple[dict | None, list[dict]]:
+def read_db(data: Path, lane: str | None, read: Callable[[sqlite3.Connection], object]) -> object:
+    """Reads a copy of the job log, so the server's writes never wait on the harness."""
     folder = state_dir(data, lane)
     source = folder / "minegoon.db"
     if not source.exists():
-        return None, []
+        return None
     copied = folder / "minegoon.read.db"
     shutil.copy(source, copied)
     try:
         with sqlite3.connect(copied) as connection:
-            task = connection.execute(
-                "SELECT id, goal, count, status, reason, deaths, model_calls FROM tasks ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            if task is None:
-                return None, []
-            keys = ("id", "goal", "count", "status", "reason", "deaths", "model_calls")
-            events = [
-                {"kind": kind, "detail": detail}
-                for kind, detail in connection.execute(
-                    "SELECT kind, detail FROM events WHERE task_id = ? ORDER BY id", (task[0],)
-                )
-            ]
-            return dict(zip(keys, task)), events
+            return read(connection)
     finally:
         if copied.exists():
             copied.unlink()
+
+
+def read_behavior(data: Path, lane: str | None = None) -> tuple[dict | None, list[dict]]:
+    def read(connection: sqlite3.Connection) -> tuple[dict | None, list[dict]]:
+        task = connection.execute(
+            "SELECT id, goal, count, status, reason, deaths, model_calls FROM tasks ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if task is None:
+            return None, []
+        keys = ("id", "goal", "count", "status", "reason", "deaths", "model_calls")
+        events = [
+            {"kind": kind, "detail": detail}
+            for kind, detail in connection.execute(
+                "SELECT kind, detail FROM events WHERE task_id = ? ORDER BY id", (task[0],)
+            )
+        ]
+        return dict(zip(keys, task)), events
+
+    return read_db(data, lane, read) or (None, [])
+
+
+def events_since(data: Path, lane: str | None, started: float) -> list[dict]:
+    """Every event from the trip's start: the desk and mission turns, and the tasks they ran."""
+    rows = read_db(data, lane, lambda connection: connection.execute(
+        "SELECT kind, detail FROM events WHERE at >= ? ORDER BY id", (int(started * 1000),)
+    ).fetchall())
+    return [{"kind": kind, "detail": detail} for kind, detail in rows or []]
 
 
 def parse_numbers(text: str) -> list[float]:
@@ -740,8 +837,16 @@ def assign(lanes: list[Lane], tasks: tuple[Task, ...], spread: bool) -> None:
 def write_trip(out: Path, record: dict) -> None:
     stem = f"{record['task']}-r{record['repeat']}"
     (out / f"{stem}.json").write_text(json.dumps(record, indent=2) + "\n")
+    talk = [
+        f"said: \"{record['said']}\"",
+        f"turns {record['turns']}, planner calls {record['strong_calls']}, cost ${record['cost']:.4f}",
+        f"problem: {record['problem'] or '-'}",
+        "calls:",
+        *(f"  {call['tool']} {call['args']} -> {'ok' if call['ok'] else 'failed'}" for call in record["calls"]),
+    ] if record.get("said") else []
     lines = [
         f"{record['task']} repeat {record['repeat']} on {record['worker']}",
+        *talk,
         f"outcome: {record['outcome']} in {record['seconds']}s, deaths {record['deaths']}, "
         f"model calls {record['model_calls']}",
         f"reason: {record['reason'] or '-'}",
@@ -779,8 +884,9 @@ def hint(record: dict) -> str:
 
 def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Path, revision: str) -> dict:
     mark = lane.helper.removeprefix(HELPER + "-")
-    verb = "course" if task.course else "spar" if task.spar else "get"
-    say(f"[{mark}] {task.id} r{repeat}: {verb} {task.count} {task.item} from {spot}")
+    verb = "course" if task.course else "spar" if task.spar else "ask" if task.said else "get"
+    asked = f'"{task.said}"' if task.said else f"{task.count} {task.item}"
+    say(f"[{mark}] {task.id} r{repeat}: {verb} {asked} from {spot}")
     prepare_lane(lane)
     move_to(lane, spot)
     hand_kit(lane, task)
@@ -793,15 +899,21 @@ def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Pat
         command = ["goto", *target]
     elif task.spar:
         command = ["spar", task.spar, str(task.count)]
+    elif task.said:
+        command = ["ask", f"{lane.helper}, {task.said}"]
     else:
         command = ["get", str(task.count), task.item]
     launch = rcon(CONTAINER, "minegoon", "lane", lane.name, *command)
+    if task.said and "OpenRouter key" in launch.stdout:
+        raise RuntimeError("the agent suite needs openrouter.api-key in the lab's config.yml")
     if launch.returncode != 0:
         say(f"[{mark}] {verb} was refused: {clean(launch.stdout or launch.stderr)}")
     next_sample = started + 30
     outcome = ""
+    lines: list[dict] = []
     while True:
-        if result_count(lane.data, lane.name) > before:
+        lines = new_results(lane.data, lane.name, before)
+        if conversation_end(lines) if task.said else lines:
             outcome = "finished"
             break
         if not running(CONTAINER):
@@ -825,13 +937,16 @@ def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Pat
         time.sleep(5)
 
     try:
-        result = last_result(lane.data, lane.name) if result_count(lane.data, lane.name) > before else {}
-    except (OSError, json.JSONDecodeError):
-        result = {}
+        lines = new_results(lane.data, lane.name, before)
+    except OSError:
+        pass
+    result = lines[-1] if lines else {}
     if task.course:
         return trek_record(lane, task, repeat, spot, out, revision, result.get("trek"), outcome, samples, offset)
     if task.spar:
         return spar_record(lane, task, repeat, spot, out, revision, result.get("spar"), outcome, samples, offset)
+    if task.said:
+        return talk_record(lane, task, repeat, spot, out, revision, lines, outcome, samples, offset, started)
     try:
         task_row, events = read_behavior(lane.data, lane.name)
     except (OSError, sqlite3.Error) as error:
@@ -946,6 +1061,65 @@ def trek_record(lane: Lane, task: Task, repeat: int, spot: tuple[int, int] | Non
     return record
 
 
+def talk_record(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Path, revision: str,
+                lines: list[dict], outcome: str, samples: list[dict], offset: int, started: float) -> dict:
+    end = conversation_end(lines) or {}
+    mission = next((line for line in lines if "mission" in line), None)
+    desk = [line["desk"] for line in lines if "desk" in line]
+    if outcome != "finished":
+        status, reason = outcome, None
+    elif "desk" in end:
+        status = "answered" if end["desk"]["ok"] else "refused"
+        reason = end["desk"]["said"]
+    else:
+        status, reason = end["status"], end.get("reason")
+    try:
+        events = events_since(lane.data, lane.name, started)
+    except (OSError, sqlite3.Error) as error:
+        events = [{"kind": "note", "detail": f"could not read the job log: {error}"}]
+    tasks = [line for line in lines if "task" in line]
+    record = {
+        "iteration_rev": revision,
+        "task": task.id,
+        "said": task.said,
+        "item": task.item,
+        "count": task.count,
+        "repeat": repeat,
+        "spot": spot,
+        "worker": lane.name,
+        "outcome": status,
+        "seconds": end.get("seconds", round(time.time() - started)),
+        "deaths": sum(line.get("deaths", 0) for line in tasks),
+        "model_calls": (mission or {}).get("model_calls", 0) + len(desk),
+        "turns": (mission or {}).get("turns", 0),
+        "strong_calls": (mission or {}).get("strong_calls", 0),
+        "cost": round((mission or {}).get("cost", 0) + sum(turn["cost"] for turn in desk), 5),
+        "guard_catches": sum(line.get("guard_catches", 0) for line in tasks),
+        "reason": reason,
+        "mission": mission,
+        "desk": desk,
+        "calls": (mission or {}).get("calls", []),
+        "stood_still": stood_still(samples),
+        "inventory": inventory(lane.helper),
+        "chat": new_chat(lane.data, offset, lane.helper),
+        "events": events,
+        "samples": samples,
+    }
+    record["problem"] = task.check(record) if task.check else ""
+    record["success"] = not record["problem"]
+    write_trip(out, record)
+    mark = lane.helper.removeprefix(HELPER + "-")
+    say(f"[{mark}] {task.id} r{repeat}: {status} in {record['seconds']}s ({talk_note(record)})")
+    return record
+
+
+def talk_note(record: dict) -> str:
+    if "said" not in record:
+        return hint(record)
+    note = f"{record['turns']} turns, {record['strong_calls']} planner, ${record['cost']:.3f}"
+    return note if record["success"] else f"{note}, {record['problem']}"
+
+
 def trek_note(record: dict) -> str:
     note = f"{record.get('speed', 0)} blocks/s"
     return note if record["success"] else f"{note}, {record['reason']}"
@@ -990,7 +1164,7 @@ def summarize(out: Path, records: list[dict], tasks: tuple[Task, ...]) -> None:
         done = sum(1 for record in rows if record["success"])
         times = ", ".join(str(record["seconds"]) for record in rows) or "-"
         deaths = ", ".join(str(record["deaths"]) for record in rows) or "-"
-        note = trek_note if task.course else fight_note if task.spar else hint
+        note = trek_note if task.course else fight_note if task.spar else talk_note if task.said else hint
         notes = "; ".join(note(record) for record in rows if note(record)) or "-"
         lines.append(f"| {task.id} | {done}/{len(rows)} | {times} | {deaths} | {notes} |")
     text = "\n".join(lines) + "\n"
@@ -1036,7 +1210,7 @@ def main() -> None:
     start_server(CONTAINER, data, SUITE_ENV, recreate=True)
     wait_lanes(300)
     lanes = [Lane(name, helper_name(name), data, []) for name in LANES]
-    assign(lanes, tasks, spread=suite in ("skills", "moves"))
+    assign(lanes, tasks, spread=suite in ("skills", "moves", "agent"))
     records: list[dict] = []
     lock = threading.Lock()
     threads = [

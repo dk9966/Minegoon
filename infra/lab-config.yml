@@ -5,7 +5,8 @@ helper:
 
 openrouter:
   api-key: ""
-  parse-model: google/gemini-3.8-flash
+  planner-model: anthropic/claude-opus-5.5
+  desk-model: google/gemini-3.8-flash
   advice-model: google/gemini-3.8-flash
   fallback-model: anthropic/claude-opus-5.5
 
