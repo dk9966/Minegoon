@@ -50,11 +50,11 @@ public final class Advisor {
         sentence a player would understand.
         """;
 
-    private final OpenRouter router;
+    private final ModelClient router;
     private final String model;
     private final Logger log;
 
-    public Advisor(OpenRouter router, String model, Logger log) {
+    public Advisor(ModelClient router, String model, Logger log) {
         this.router = router;
         this.model = model;
         this.log = log;

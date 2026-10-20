@@ -44,11 +44,11 @@ public final class IntentParser {
         Use none for greetings, questions that are not about what you are carrying, or anything that is not a request.
         """;
 
-    private final OpenRouter router;
+    private final ModelClient router;
     private final String model;
     private final String helperName;
 
-    public IntentParser(OpenRouter router, String model, String helperName) {
+    public IntentParser(ModelClient router, String model, String helperName) {
         this.router = router;
         this.model = model;
         this.helperName = helperName;

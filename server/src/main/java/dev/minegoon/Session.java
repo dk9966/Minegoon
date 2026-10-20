@@ -18,7 +18,7 @@ import dev.minegoon.jobs.Tutor;
 import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Lessons;
 import dev.minegoon.models.Advisor;
-import dev.minegoon.models.OpenRouter;
+import dev.minegoon.models.ModelClient;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.planner.Planner;
 import dev.minegoon.safety.BreakGuard;
@@ -78,7 +78,7 @@ public final class Session {
     private static final int WATCH_TICKS = 20 * 20;
 
     /** What every helper on the server uses alike. Lessons are shared, so one helper's lesson helps all. */
-    public record Shared(Settings settings, MainThread main, OpenRouter router, Cookbook cookbook,
+    public record Shared(Settings settings, MainThread main, ModelClient router, Cookbook cookbook,
                          Knowledge knowledge, Lessons lessons) {
     }
 
