@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** One JSON line per finished task, for practice runs to score. */
+/** One JSON line per finished task or mission, for practice runs to score. */
 public final class Results {
 
     private final Path file;
@@ -59,6 +59,24 @@ public final class Results {
         line.put("deaths", task.deaths());
         line.put("model_calls", task.modelCalls());
         line.put("guard_catches", guardCatches.getAndSet(0));
+        append(line);
+    }
+
+    /** A mission that ended: how, what it cost, and each call with whether the game confirmed it. */
+    public void record(Mission mission) {
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("mission", mission.id());
+        line.put("request", mission.request());
+        line.put("status", mission.status().name().toLowerCase(Locale.ROOT));
+        line.put("reason", mission.reason());
+        line.put("seconds", (System.currentTimeMillis() - mission.createdAt()) / 1000);
+        line.put("turns", mission.turns());
+        line.put("model_calls", mission.modelCalls());
+        line.put("strong_calls", mission.strongCalls());
+        line.put("cost", mission.cost());
+        line.put("calls", mission.log().stream().filter(Mission.Line::isCall).map(call -> Map.of(
+            "tool", call.tool(), "args", call.args().toString(),
+            "ok", call.receipt() != null && call.receipt().confirmed())).toList());
         append(line);
     }
 

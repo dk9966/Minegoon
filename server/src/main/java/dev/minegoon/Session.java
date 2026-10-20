@@ -1,6 +1,10 @@
 package dev.minegoon;
 
 import dev.minegoon.actions.Body;
+import dev.minegoon.agent.DoneWhen;
+import dev.minegoon.agent.MissionRunner;
+import dev.minegoon.agent.MissionTools;
+import dev.minegoon.agent.Senses;
 import dev.minegoon.actions.Crafter;
 import dev.minegoon.actions.Miner;
 import dev.minegoon.actions.Mover;
@@ -376,10 +380,16 @@ public final class Session {
             Names::biome, log);
 
         results = new Results(folder.resolve("results.jsonl"));
-        MissionBoard missions = new MissionBoard(db);
+        MissionBoard missions = new MissionBoard(db, results::record);
         Inspector inspector = new Inspector(main, helper);
         foreman = new Foreman(body, new JobBoard(db), missions, inspector, new Planner(shared.cookbook()),
             crew, tutor, zones, results, db, log);
+        Senses senses = new Senses(main, helper, vision, structures, crew.sleeper());
+        MissionRunner runner = new MissionRunner(shared.router(), settings.agent(), missions,
+            new MissionTools(foreman, crew, missions, inspector, vision, senses, helper, Names::biome).all(),
+            senses::state, new DoneWhen(main, helper, inspector)::met, helper::say, System::currentTimeMillis,
+            helperName);
+        foreman.runMissionsWith(runner::run);
         helper.onDeath(spot -> {
             diedAt = Bukkit.getCurrentTick();
             foreman.onDeath(spot);

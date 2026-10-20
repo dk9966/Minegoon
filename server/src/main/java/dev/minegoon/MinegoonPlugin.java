@@ -65,7 +65,7 @@ public final class MinegoonPlugin extends JavaPlugin {
             return;
         }
 
-        IntentParser parser = new IntentParser(router, settings.parseModel(), settings.helperName());
+        IntentParser parser = new IntentParser(router, settings.agent().deskModel(), settings.helperName());
         getServer().getPluginManager().registerEvents(new ChatListener(main, sessions, parser, getLogger()), this);
         PluginCommand command = Objects.requireNonNull(getCommand("minegoon"));
         command.setExecutor(executor(settings));

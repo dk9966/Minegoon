@@ -11,10 +11,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import org.bukkit.Location;
 
-/** Missions and their logs, stored in SQLite so a mission survives a restart. The log is one JSON line per entry. */
+/**
+ * Missions and their logs, stored in SQLite so a mission survives a restart.
+ * The log is one JSON line per entry. Each model turn also leaves an agent
+ * event, and every mission that ends, however it ends, is handed to {@code ended}.
+ */
 public final class MissionBoard {
 
     private static final String MISSION = """
@@ -24,10 +29,12 @@ public final class MissionBoard {
         """;
 
     private final Database db;
+    private final Consumer<Mission> ended;
     private final Gson gson = new Gson();
 
-    public MissionBoard(Database db) {
+    public MissionBoard(Database db, Consumer<Mission> ended) {
         this.db = db;
+        this.ended = ended;
     }
 
     public long create(UUID owner, String ownerName, Location home, String request) {
@@ -54,10 +61,19 @@ public final class MissionBoard {
     public void setStatus(long id, Task.Status status, String reason) {
         db.update("UPDATE missions SET status = ?, reason = ?, finished_at = ? WHERE id = ?",
             status.name(), reason, status.finished() ? System.currentTimeMillis() : null, id);
+        if (status.finished()) {
+            mission(id).ifPresent(ended);
+        }
     }
 
     public void setPlan(long id, Mission.Plan plan) {
         db.update("UPDATE missions SET plan = ? WHERE id = ?", gson.toJson(plan), id);
+    }
+
+    /** One model turn: which model, the tool and a short form of its arguments, the receipt, tokens and cost. */
+    public void event(long id, String detail) {
+        db.insert("INSERT INTO events (mission_id, kind, detail, at) VALUES (?, 'agent', ?, ?)",
+            id, detail, System.currentTimeMillis());
     }
 
     public void counted(long id, boolean strong, double cost) {

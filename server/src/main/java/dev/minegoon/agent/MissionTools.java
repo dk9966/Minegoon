@@ -151,15 +151,23 @@ public final class MissionTools {
                 Material item = args.item("item");
                 UUID player = player(args, mission);
                 int handed = crew.homecoming().deliver(player, null, ItemSet.of(item), count);
-                return handed(handed, item, args.text("player", mission.ownerName()));
+                String name = args.text("player", "");
+                return handed(handed, item, name.isEmpty() ? mission.ownerName() : name);
             });
     }
 
     private Tool<Mission> comeTo() {
-        return Tool.of("come_to", "Walks to a player, following them if they move.", PLAYER, (args, mission) -> {
-            crew.homecoming().comeTo(player(args, mission));
-            return Receipt.confirmed("come_to", "Reached " + args.text("player", mission.ownerName()) + ".");
-        });
+        return Tool.of("come_to", """
+            Walks to a player, following them if they move. With no player, walks to the player who asked, or to \
+            where they asked if they are not around.""", PLAYER, (args, mission) -> {
+                String name = args.text("player", "");
+                if (name.isEmpty()) {
+                    crew.homecoming().goBack(mission.owner(), mission.home());
+                } else {
+                    crew.homecoming().comeTo(player(args, mission));
+                }
+                return Receipt.confirmed("come_to", "Reached " + (name.isEmpty() ? mission.ownerName() : name) + ".");
+            });
     }
 
     private Tool<Mission> sleep() {
