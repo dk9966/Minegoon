@@ -14,12 +14,13 @@ We split the work the way a real crew does:
 
 - **The body** is the worker on site. He has good hands (careful actions that report honestly what happened) and good instincts (he eats when hungry and dodges creepers without being told).
 - **The job board** is a whiteboard listing every task, what "done" looks like, and who is on it. It's saved to disk, so a crash, a death, or a restart never loses the plan.
+- **The listener** is the person at the front desk. You talk in ordinary sentences. He decides whether you asked a question, gave an order, changed your mind, or said yes to something that was waiting.
 - **The planner** is the architect. Smart and expensive, so we only call him when we need a new plan or when something has gone badly wrong.
 - **The foreman** is fast and cheap. He takes the next job off the board and drives the worker through it, step by step.
-- **The notebook** is the site logbook. Where the portal is, what's in each chest, which rooms of the mansion are cleared. The planner and foreman get a short briefing from it, not the whole history.
+- **The notebook** is the site logbook. Where the portal is, what's in each chest, which rooms of the mansion are cleared. The listener, planner, and foreman each get a short extract from it, not the whole history.
 - **The inspector** checks every finished job against the game itself. Is the item really in the inventory? Is the wall really there? The model saying "done" never counts.
 - **The blueprint office** handles building. It designs with shapes (walls, towers, roofs), shows you a preview, works out exactly what materials are needed, and hands the build to the crew in sections.
-- **You** are the client. You give orders in in-game chat, approve designs, and can pause or redirect at any time.
+- **You** are the client. You talk in ordinary sentences, in game chat or in the dashboard. "Kill the dragon." "How's it going?" "Come here." "Looks good." "Wait, use oak." The listener works out what you meant. There is no command list to learn.
 
 Run like this, a dragon kill becomes a checklist of about 15 jobs, each with a clear finish line. A castle becomes "gather 4,000 stone bricks, then build the north wall layer by layer, then check it against the blueprint." A mansion becomes "find it, gear up, then clear and light each room, marking it on the map."
 
@@ -29,7 +30,8 @@ Run like this, a dragon kill becomes a checklist of about 15 jobs, each with a c
 
 ```mermaid
 flowchart TB
-  you[You: in-game chat and dashboard]
+  you[You: ordinary sentences in chat or the dashboard]
+  listener[Listener: cheap model, every message]
   planner[Planner: smart model, called rarely]
   board[(Job board: saved to disk)]
   foreman[Foreman: fast model or playbook code]
@@ -39,8 +41,12 @@ flowchart TB
   body[Body: Mineflayer bot with honest actions and reflexes]
   mc[Minecraft 26.3 server]
 
-  you --> planner
-  you --> board
+  you --> listener
+  listener --> planner
+  listener --> board
+  listener --> foreman
+  listener --> you
+  notebook --> listener
   planner --> board
   blueprint --> board
   board --> foreman
@@ -54,7 +60,7 @@ flowchart TB
 
 One mission goes like this:
 
-1. You say "kill the ender dragon."
+1. You say "kill the ender dragon," or any other wording of the same idea. The listener treats it as a new mission.
 2. The planner writes a job tree with a finish line on each job (for example, "3 blaze rods in inventory").
 3. The foreman takes the next open job and gets a short briefing: the job, the relevant facts from the notebook, recent events, and which playbooks are available.
 4. The foreman runs a tested playbook if one fits. If not, it picks actions one at a time.
@@ -97,14 +103,26 @@ One mission goes like this:
 
 ---
 
-### 3. Planner and foreman: two speeds of thinking
+### 3. Listener, planner, and foreman: three speeds of thinking
 
-**What it is:** Two model roles. The planner is a top model (for example Claude Opus 5 or GPT-6 Astra) that writes and repairs the job tree. The foreman is a fast, cheap model, or plain playbook code, that runs one job at a time.
+**What it is:** Three model roles. The listener is a fast, cheap model that reads everything you say. The planner is a top model (for example Claude Opus 5 or GPT-6 Astra) that writes and repairs the job tree. The foreman is a fast, cheap model, or plain playbook code, that runs one job at a time.
 
-**Why:** Astra + Jev killed the dragon with 35 planner calls and 131 small decisions for about $0.97. Mine AI MCP used one huge model for everything at about $93. Most moment-to-moment choices ("open this chest," "attack this zombie") don't need the smartest model.
+**Why:** You talk in ordinary sentences, and those sentences are not all the same kind of thing. "Kill the dragon" is a mission. "How's it going?" is a question. "Come here" is an order for right now. "Looks good" is a yes to whatever is waiting. "Wait, oak, not birch" is a correction. A fixed list of commands only covers the phrases we wrote down, and you would have to remember them. Astra + Jev killed the dragon with 35 planner calls and 131 small decisions for about $0.97. Mine AI MCP used one huge model for everything at about $93. The listener and the foreman exist so that a sentence, and a moment-to-moment choice, do not each cost a planner call.
 
 **What we do:**
-- The planner is called only at the start of a mission, when a job fails 3 times, or when you change the goal.
+- The listener runs on every message from you, in game chat or the dashboard text box. There is no command syntax, and no special words it is waiting for.
+- It sees a small state card, not the whole history: who is speaking, the current mission, the active job, anything waiting for a yes or no, and where the bot is. The notebook and the board supply that card. Follow-ups like "the stone one," "nah," and "actually wait" refer to whatever that card says is in front of you.
+- One message can ask for more than one thing. "Come here and tell me how the wall is going" means walk over, and answer.
+- A long, rambling request becomes a mission for the planner. It does not become one giant action.
+- It routes like this:
+  - A new goal, or a real change of goal, goes to the planner.
+  - A nudge to work already on the board ("north wall first," "use the oak") goes to the foreman, or a small edit of the board. The planner stays out unless the goal itself changed.
+  - A question is answered from the notebook, the board, and the live body. No new jobs.
+  - Pause, resume, stop, come here, follow me, and wait go straight to the board and the body.
+  - A yes or no while something is waiting ("go ahead," "not yet," "make the towers taller") opens that gate or sends it back. The same words with nothing waiting are ordinary chat, and the listener says what it understood.
+- If the listener is not sure, it asks one short question in the same chat. It does not start a mission, enter the End, or approve a build on a guess.
+- Only your messages count. The bot ignores its own chat. If other people join later, it acts when the message is clearly aimed at it.
+- The planner is called only at the start of a mission, when a job fails 3 times, when you change the goal, or when the listener decides a message is one of those.
 - The foreman handles the step-by-step loop.
 - **A fresh short briefing for each job.** 88% of Mine AI MCP's cost was the model rereading its own growing history. Instead, every job starts with a briefing of a few thousand tokens built from the notebook and the board. Conversations never grow without limit.
 - **Model-neutral.** One small adapter per provider, so we can swap models as better ones come out.
@@ -217,18 +235,19 @@ The blueprint office pipeline above: design, approve, gather, build in sections,
 - A playbook is trusted once it hits a target success rate, for example 90% for basic jobs and 70% for dangerous fights to start.
 - We track a few numbers over time: time to iron, time to diamonds, time to blaze rods, time to dragon, deaths per hour, model cost per milestone, and blueprint match percentage.
 - Construction tests reuse MineCollab blueprints and MineCEraft tasks where we can.
+- **Listener sentences.** A fixed list of ordinary phrases, several wordings of each, must take the right route: start a mission, answer a question, pause, correct the active job, approve, or ask one question back. A vague "sure" with nothing waiting must not start a mission or approve a build. This list is checked the same way as any other lab task: same phrases every time, the route is the finish line.
 - How to set up runs, measure them, and read the logs is written out in `04-testing-dialogue.md`.
 
 ---
 
 ### 10. You stay in charge
 
-**Why:** Steve AI's best idea was the experience: press a key, type what you want, watch it happen.
+**Why:** Steve AI's best idea was the experience: say what you want and watch it happen. You will talk in sentences pretty much all of the time, so that is the whole interface.
 
 **What we do:**
-- **In-game chat commands.** `!mission kill the dragon`, `!status`, `!pause`, `!resume`, `!come`, `!approve`, `!stop`. Short and always available.
-- **A web dashboard (client)** with a live 3D view of the bot (Mineflayer's prismarine-viewer), the job board, the notebook map, cost so far, and buttons to approve designs or pause.
-- **Approval gates** for anything big or irreversible: starting a castle, leaving for a distant mansion, entering the End.
+- **Ordinary language is the only way in.** Game chat and the dashboard text box both go to the listener in section 3. "Kill the dragon," "suit up in iron," "where are you," "hold on," and "yeah, that castle's good" all work, including messy wording of the same idea. There is no `!mission` / `!pause` list, and the bot never answers with a usage line.
+- **The dashboard is for watching.** A live 3D view of the bot (Mineflayer's prismarine-viewer), the job board, the notebook map, cost so far, and a castle preview you can spin around. You can approve a design by saying "looks good" while you look at it. You do not have to press a button to be understood.
+- **A clear yes still gates the big steps.** Starting a castle, leaving for a distant mansion, and entering the End wait until you agree in words. "Sure," "do it," and "go ahead" count when one of those is waiting.
 
 ---
 
@@ -243,6 +262,7 @@ Every piece exists because a real project showed we need it:
 | Protected zones | Bot digging through its own castle | Mine AI MCP limitations doc |
 | No operator rights | Accidental cheating | Steve AI and minecraft-agentic both build with free blocks |
 | Job board on disk | Losing hours of progress on a crash | No existing agent has one |
+| Listener on every message | A command list you have to remember, and a planner call for "come here" | You talk in sentences; Astra + Jev showed the expensive model should stay rare |
 | Planner and foreman split | Cost and slowness | $0.97 (Astra + Jev) vs about $93 (Mine AI MCP) |
 | Short briefings | Context rereading cost | 88% of Mine AI MCP's cost |
 | Tested playbooks | Piles of bad self-written skills | Voyager vs Odyssey |
@@ -254,6 +274,7 @@ Every piece exists because a real project showed we need it:
 - **Training our own vision model.** The "eyes and fingers" research agents are still at about 15% on diamond-level tasks. The brain + body approach is far ahead for real use.
 - **A crew of bots from day one.** MineCollab found that more agents often made things worse because they communicate badly. The job board makes adding bots easy later, once one bot is solid.
 - **Letting the model write and run any code it wants.** Flexible, but it's where Mindcraft-style agents break. Improvisation is allowed through fixed actions, and new code only joins the playbook set after it passes lab tests.
+- **A special command list.** `!mission`, `!pause`, and the rest only understand the phrases we listed. You talk in sentences, and the listener routes them.
 
 ---
 
@@ -264,9 +285,9 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 | Phase | What | Exit test | Status |
 |---|---|---|---|
 | 0 | Research and planning docs | These three docs written | Done (Oct 8, 2026) |
-| 1 | World and body hello | Local 26.3 server running; you and the bot both in the world; bot walks to you on `!come` | Not started |
+| 1 | World and body hello | Local 26.3 server running; you and the bot both in the world; you ask the bot to come to you in ordinary words and it walks over | Not started |
 | 2 | Body tools and notebook | Mine AI MCP's body ported and running against 26.3 through the translator; receipts and SQLite memory working; protected zones in place | Not started |
-| 3 | Brain loop | Job board, inspector, planner, foreman. First mission: "full iron armor from a fresh spawn," which passes 8 out of 10 lab runs | Not started |
+| 3 | Brain loop | Job board, inspector, listener, planner, foreman. "Full iron armor from a fresh spawn" passes 8 out of 10 lab runs. A mission, a question, a correction, and a pause each work when said several different ways | Not started |
 | 4 | Dragon | Full dragon mission on normal difficulty, logged from start to finish; then a success-rate measurement over several seeds | Not started |
 | 5 | Castle | Blueprint office end to end: design, preview, approve, gather, build in sections, at least 98% blueprint match, all in survival | Not started |
 | 6 | Mansion | Combat tactics lab-tested; one full mansion cleared and lit | Not started |
@@ -275,6 +296,7 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 ### Notes for the next phase
 
 - Phase 1 setup is in `03-deployment-strategy.md`.
+- You talk to the bot in ordinary language (decided Oct 21, 2026). Phase 1 already has to understand "come here" said more than one way, so a command syntax never becomes the interface. The full listener (questions, new missions, corrections, approvals) is part of the Phase 3 brain loop, and its sentence list is in section 9.
 - Before porting Mine AI MCP's body, check whether their pinned Mineflayer fork works through ViaBackwards on 26.3, or needs rebasing onto upstream Mineflayer 4.39.0 (which natively supports up to 26.1).
 - Some of Mine AI MCP's development tools (Mine Labs) need private GitHub access. Plan to build our own lab scenarios instead of relying on theirs.
 - The testing method (same seeds, one setting at a time, harness-judged finish lines, read the first mistake in the logs) is recorded in `04-testing-dialogue.md`. Use it when Phase 3's lab starts.

@@ -74,7 +74,7 @@ flowchart LR
       paper[Paper 26.3 server, offline mode, ViaVersion and ViaBackwards]
     end
     body[Body: Mineflayer bot, speaks 26.1]
-    brain[Brain: job board, planner, foreman]
+    brain[Brain: listener, job board, planner, foreman]
     dash[Dashboard client in the browser]
   end
   llm[Model APIs]
@@ -94,7 +94,7 @@ minegent/
   infra/             Minecraft server Docker setup (real world and lab world)
   packages/
     body/            Mineflayer bot, reflexes, actions, MCP endpoint
-    brain/           job board, planner, foreman, inspector
+    brain/           listener, job board, planner, foreman, inspector
     notebook/        SQLite schema and queries shared by body and brain
     blueprint/       design shapes, compiler, bill of materials
     client/          web dashboard
@@ -201,7 +201,7 @@ If a new release breaks the translator badly, the fallback is to hold the server
 1. Install Docker and pnpm.
 2. Create `infra/docker-compose.yml` from the example above and start it.
 3. Join `localhost` from your normal launcher on 26.3. Op yourself from the console.
-4. Write the smallest possible bot: connect as `Builder` with version 26.1, say hello in chat, and walk to you on `!come`.
+4. Write the smallest possible bot: connect as `Builder` with version 26.1, say hello in chat, and walk to you when you ask in ordinary words ("come here," "can you come over"). Same request, different wording, same result. A question like "where are you?" gets a plain answer. No command syntax.
 5. Confirm through the translator that the bot sees the right blocks, inventory, and health, and that it can mine, craft, and place one block correctly.
 6. Update the roadmap in `02-how-we-make-it-better.md` with what worked, what didn't, and anything Phase 2 needs to know.
 
