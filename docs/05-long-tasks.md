@@ -408,3 +408,17 @@ October 21, 2026. One repeat, from spawn, on the seed `minegoon` world. There wa
 The desk and the planner chose the right tool every time they were asked: a mission for a job, `dig` only for the strip mine, `plains` for the wool, `inventory` for the question, and a refusal for bedrock. The misses after that are the same body problems as the skills passes (vines, a dig that will not go through water, diamonds that never go underground, sheep that are not where it looks), plus one planning miss: a "done" check that asks for logs the next step is going to spend.
 
 Next: the same eight tasks, three repeats, with a real OpenRouter key in the lab config, once the vine stall and the water-behind-gravel dig are fixed. Until then another model pass will time out in the same places.
+
+### Diamond armor, three tries
+
+October 21, 2026. Seed `minegoon`, practice server, a diamond-trip kit (iron pick, four stone picks, food, cobble, sticks, a shield). The sentence was "get a full set of diamond armor". There was no OpenRouter key, so the lab called `scripts/armor_model.py`. The planner name is the big model. The desk and the advisor are the small one. Each answer is a `model fire` line in the server log and a `model_fire` line in `results.jsonl` (size, role, asked model, answered model, what it did, tokens, cost, time). The stand-in never orders strip mining. The body stairs toward y=-59 when no cave in sight is deeper.
+
+| Try | Done | Time | Pieces at the end | Model fires |
+|---|---|---|---|---|
+| 1 | yes | 6545 s | helmet, chestplate, leggings, boots | 1 big (planner `write_plan`), 7 small (desk `start_mission`, four `get_items`, one advice `lesson`, desk `finish`) |
+| 2 | no | 7220 s, stopped at the limit | none (helmet and chestplate were made, then lost) | 1 big (`write_plan`), 5 small (`start_mission`, three `get_items`, one advice `lesson`) |
+| 3 | no | 7204 s, stopped at the limit | none (helmet and chestplate were made, then lost) | 1 big (`write_plan`), 4 small (`start_mission`, three `get_items`) |
+
+Try 1 is the one that finished. The big model wrote the plan once, at the start. The small desk ordered each piece, and called `finish` only after all four were in hand. One small advice call fired while a search was dry, and told it to stay near y=-59.
+
+Tries 2 and 3 made the helmet and the chestplate, then left diamond level (sticks for more stone picks, or iron for a worn iron pick). Try 2 suffocated in a wall on the way up, then died to a zombie, a creeper, and a drowned while walking back for the drops, and the set was gone. Try 3 died to an enderman and then a creeper on the iron trip, and the set was gone. A death respawns at world spawn, and the drops are too far to reach before they despawn once the walk back also dies.
