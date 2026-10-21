@@ -47,7 +47,7 @@ public final class OpenRouter implements ModelClient {
     }
 
     @Override
-    public JsonObject ask(String model, String system, String user, String schemaName, String schema)
+    public Answer ask(String model, String system, String user, String schemaName, String schema)
             throws IOException {
         JsonObject format = new JsonObject();
         format.addProperty("name", schemaName);
@@ -60,8 +60,8 @@ public final class OpenRouter implements ModelClient {
 
         JsonObject body = body(model, system, user);
         body.add("response_format", responseFormat);
-        return send(body, answer -> JsonParser.parseString(reply(answer).get("content").getAsString())
-            .getAsJsonObject());
+        return send(body, answer -> new Answer(
+            JsonParser.parseString(reply(answer).get("content").getAsString()).getAsJsonObject(), usage(answer)));
     }
 
     @Override

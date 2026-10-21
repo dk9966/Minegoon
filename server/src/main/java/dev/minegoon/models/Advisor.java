@@ -97,11 +97,12 @@ public final class Advisor {
             return Optional.empty();
         }
         try {
-            JsonObject answer = router.ask(model, JUDGE, gap.briefing(), "verdict", verdictSchema(structures));
-            fires.fired(false, "advice", model, null, "verdict");
-            String reason = answer.get("reason").getAsString();
-            return Optional.of(new Verdict(answer.get("possible").getAsBoolean(), reason,
-                lesson(answer, reason, knownBiome, structures), blocks(answer.getAsJsonArray("blocks"))));
+            ModelClient.Answer answer = router.ask(model, JUDGE, gap.briefing(), "verdict", verdictSchema(structures));
+            fires.fired(false, "advice", model, answer.usage(), "verdict");
+            JsonObject body = answer.body();
+            String reason = body.get("reason").getAsString();
+            return Optional.of(new Verdict(body.get("possible").getAsBoolean(), reason,
+                lesson(body, reason, knownBiome, structures), blocks(body.getAsJsonArray("blocks"))));
         } catch (IOException | RuntimeException e) {
             log.warning("Judging call failed: " + e.getMessage());
             return Optional.empty();
@@ -114,9 +115,10 @@ public final class Advisor {
             return Optional.empty();
         }
         try {
-            JsonObject answer = router.ask(model, SYSTEM, gap.briefing(), "lesson", schema(structures));
-            fires.fired(false, "advice", model, null, "lesson");
-            return lesson(answer, answer.get("note").getAsString(), knownBiome, structures);
+            ModelClient.Answer answer = router.ask(model, SYSTEM, gap.briefing(), "lesson", schema(structures));
+            fires.fired(false, "advice", model, answer.usage(), "lesson");
+            JsonObject body = answer.body();
+            return lesson(body, body.get("note").getAsString(), knownBiome, structures);
         } catch (IOException | RuntimeException e) {
             log.warning("Advice call failed: " + e.getMessage());
             return Optional.empty();

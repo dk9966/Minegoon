@@ -32,7 +32,7 @@ final class ScriptedModel implements ModelClient {
     }
 
     @Override
-    public JsonObject ask(String model, String system, String user, String schemaName, String schema) {
+    public Answer ask(String model, String system, String user, String schemaName, String schema) {
         throw new UnsupportedOperationException("the agent only picks tools");
     }
 

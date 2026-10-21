@@ -11,13 +11,17 @@ public interface ModelClient {
     record ToolCall(String name, JsonObject arguments, Usage usage) {
     }
 
+    /** A schema answer, and what the call cost. */
+    record Answer(JsonObject body, Usage usage) {
+    }
+
     /** The model that answered, the tokens it read and wrote, and the cost in credits. */
     record Usage(String model, int promptTokens, int completionTokens, double cost) {
     }
 
     boolean enabled();
 
-    JsonObject ask(String model, String system, String user, String schemaName, String schema) throws IOException;
+    Answer ask(String model, String system, String user, String schemaName, String schema) throws IOException;
 
     /** Exactly one call to one of {@code tools}, given as OpenRouter function definitions. */
     ToolCall pick(String model, String system, String briefing, JsonArray tools) throws IOException;
