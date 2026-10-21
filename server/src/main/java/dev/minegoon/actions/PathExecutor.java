@@ -13,6 +13,7 @@ import dev.minegoon.spawn.FakePlayer;
 import dev.minegoon.spawn.FakePlayer.Controls;
 import dev.minegoon.world.BlockReader;
 import dev.minegoon.world.Clearance;
+import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
 import dev.minegoon.world.Traits;
 import dev.minegoon.world.path.Move;
@@ -300,7 +301,9 @@ public final class PathExecutor {
             BlockReader live = body.live();
             if (step.move().horizontal()) {
                 for (Pos cell : List.of(step.to(), step.to().offset(0, 1, 0))) {
-                    if (vine(live, cell)) {
+                    // A long fall's landing can be a vine far below. Digging it from up
+                    // here fails the whole route, so only break a vine already in reach.
+                    if (vine(live, cell) && inReach(player, cell)) {
                         return new Dig(cell);
                     }
                 }
@@ -434,5 +437,11 @@ public final class PathExecutor {
 
     private static boolean vine(int traits) {
         return has(traits, CLIMBABLE) && has(traits, REPLACEABLE);
+    }
+
+    private static boolean inReach(Player player, Pos cell) {
+        return player.getEyeLocation().distanceSquared(
+            new Location(player.getWorld(), cell.x() + 0.5, cell.y() + 0.5, cell.z() + 0.5))
+            <= (Goal.REACH + 0.5) * (Goal.REACH + 0.5);
     }
 }
