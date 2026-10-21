@@ -107,6 +107,29 @@ public final class Hands {
             || name.startsWith("NETHERITE_");
     }
 
+    /** Wooden or stone pickaxes still in the inventory. The iron one is kept for ore. */
+    public static int cheapPicks(Player player) {
+        int count = 0;
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            if (stack != null && (stack.getType() == Material.WOODEN_PICKAXE
+                    || stack.getType() == Material.STONE_PICKAXE)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Stone pickaxes the cobble and sticks already held can make. Cobbled
+     * deepslate counts: it crafts the same tools cobblestone does.
+     */
+    public static int craftableStonePicks(Player player) {
+        int sticks = count(player, ItemSet.of(Material.STICK));
+        int cobble = count(player, ItemSet.of(Material.COBBLESTONE))
+            + count(player, ItemSet.of(Material.COBBLED_DEEPSLATE));
+        return Math.min(sticks / 2, cobble / 3);
+    }
+
     /** Puts {@code material} in the main hand. Returns false when the helper has none. */
     public static boolean hold(Player player, Material material) {
         PlayerInventory inventory = player.getInventory();

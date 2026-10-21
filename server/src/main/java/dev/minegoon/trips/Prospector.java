@@ -203,6 +203,13 @@ public final class Prospector {
                 rung++;
                 movesOnRung = 0;
             }
+            if (descend(checkpoint)) {
+                places++;
+                log.info(who + " looking for " + what + ": stairs to " + mover.feet());
+                rung = 0;
+                movesOnRung = 0;
+                return;
+            }
             frontier(checkpoint);
             log.info(who + " looking for " + what + ": new ground at " + mover.feet());
             places++;
@@ -242,13 +249,33 @@ public final class Prospector {
         }
 
         /**
+         * Still well above the best height after the listed moves. Another
+         * staircase, not a side tunnel: the ore is not up here.
+         */
+        private boolean descend(Checkpoint checkpoint) {
+            if (find.best() == null || !tunneler.armed()) {
+                return false;
+            }
+            Pos feet = mover.feet();
+            if (feet.y() <= find.best() + BURIED) {
+                return false;
+            }
+            return tunneler.down(Math.max(find.best(), feet.y() - STAIRS), STAIRS, checkpoint);
+        }
+
+        /**
          * Down into a cave in sight that is actually deeper, but not below where
          * the thing stops showing up. A shallow mouth does not count: with no
          * deep opening, stairs go toward the best height instead of wandering
-         * the surface. That is a staircase, not a strip mine.
+         * the surface. Far below the best height, stairs go back up to it.
+         * That is a staircase, not a strip mine.
          */
         private boolean cave(Checkpoint checkpoint) {
             Pos feet = mover.feet();
+            if (find.best() != null && feet.y() < find.best() - CAVERN_ABOVE && tunneler.armed()
+                    && tunneler.up(Math.min(find.best(), feet.y() + STAIRS), STAIRS, checkpoint)) {
+                return true;
+            }
             if (find.best() != null && feet.y() <= find.best() + 2) {
                 return false;
             }

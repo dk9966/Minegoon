@@ -407,6 +407,7 @@ public final class Foreman {
         bedding = false;
         sheltered = false;
         supplied.clear();
+        crew.retreat().craftingStonePicks(true);
     }
 
     /**
@@ -434,6 +435,9 @@ public final class Foreman {
         }
         if (job.step() instanceof Step.Recover) {
             return false;
+        }
+        if (job.step() instanceof Step.Gather gather && restockStonePicks(task, gather)) {
+            return true;
         }
         Material worn = wornTool(job);
         boolean usesTool = job.step() instanceof Step.Gather || job.step() instanceof Step.Hunt;
@@ -499,6 +503,41 @@ public final class Foreman {
         sheltered = true;
         say("It's night and I have nothing to fight with, so I'll dig in until morning.");
         board.addFront(task.id(), new Step.Shelter());
+        return true;
+    }
+
+    /**
+     * Stone pickaxes do the staircase and the tunnels. When they are gone and
+     * the cobble already held can make more, craft those before the iron pick
+     * is spent on deepslate. Gives up for this task when that craft would mean
+     * leaving to gather something.
+     */
+    private boolean restockStonePicks(Task task, Step.Gather gather) {
+        if (!crew.retreat().craftingStonePicks()) {
+            return false;
+        }
+        boolean picky = gather.blocks().stream()
+            .anyMatch(block -> block.createBlockData().requiresCorrectToolForDrops());
+        if (!picky) {
+            return false;
+        }
+        int make = body.main().call(() -> {
+            Player player = body.player();
+            if (player == null || Hands.cheapPicks(player) > 0) {
+                return 0;
+            }
+            return Math.min(4, Hands.craftableStonePicks(player));
+        });
+        if (make < 1) {
+            return false;
+        }
+        List<Step> steps = provision(ItemSet.of(Material.STONE_PICKAXE), make);
+        if (steps == null || steps.stream().anyMatch(Foreman::inTheWorld)) {
+            crew.retreat().craftingStonePicks(false);
+            return false;
+        }
+        say("My stone pickaxes are used up. I'll make more from the cobble I have, and keep the iron one for the ore.");
+        board.addAllFront(task.id(), steps);
         return true;
     }
 

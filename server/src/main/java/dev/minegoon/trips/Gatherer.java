@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -78,7 +79,7 @@ public final class Gatherer {
             throw new ActionFailed("I don't have a tool that can harvest " + ItemSet.of(step.blocks()).name());
         }
         Deque<Pos> candidates = new ArrayDeque<>();
-        Checkpoint checkpoint = retreat.guarding(neededFor(minable), () -> !candidates.isEmpty());
+        Checkpoint checkpoint = digging(minable, () -> !candidates.isEmpty());
         Prospector.Search search = prospector.search(step);
         Set<Pos> skipped = new HashSet<>();
         int minedSinceLook = 0;
@@ -203,6 +204,31 @@ public final class Gatherer {
             }
         }
         return minable;
+    }
+
+    /**
+     * The usual tool check, plus a stop when the stone pickaxes are gone and
+     * more can be made from cobble already held. The iron pick stays for ore.
+     */
+    private Checkpoint digging(Set<Material> minable, BooleanSupplier oreInSight) {
+        Checkpoint inner = retreat.guarding(neededFor(minable), oreInSight);
+        boolean picky = minable.stream().anyMatch(block -> block.createBlockData().requiresCorrectToolForDrops());
+        if (!picky) {
+            return inner;
+        }
+        return () -> {
+            inner.check();
+            if (!retreat.craftingStonePicks()) {
+                return;
+            }
+            boolean makeSome = body.main().call(() -> {
+                Player player = body.player();
+                return player != null && Hands.cheapPicks(player) == 0 && Hands.craftableStonePicks(player) > 0;
+            });
+            if (makeSome) {
+                throw new Retreat.Needed(Retreat.Reason.TOOL, "my stone pickaxes are used up");
+            }
+        };
     }
 
     private static Predicate<ItemStack> neededFor(Set<Material> blocks) {
