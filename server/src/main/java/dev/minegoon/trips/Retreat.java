@@ -36,6 +36,7 @@ public final class Retreat implements Checkpoint {
     private static final Set<Material> JUNK = EnumSet.of(
         Material.DIRT, Material.GRAVEL, Material.GRANITE, Material.DIORITE, Material.ANDESITE, Material.TUFF,
         Material.CALCITE, Material.DRIPSTONE_BLOCK, Material.POINTED_DRIPSTONE, Material.NETHERRACK,
+        Material.COBBLESTONE, Material.COBBLED_DEEPSLATE,
         Material.ROTTEN_FLESH, Material.POISONOUS_POTATO, Material.SPIDER_EYE);
 
     public enum Reason { HUNGRY, FULL, TOOL }
