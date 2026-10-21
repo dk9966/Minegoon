@@ -58,6 +58,9 @@ final class PlayerMade {
                 all.add(material);
             }
         }
+        // Geodes are wrapped in it. A staircase to diamond level runs into them,
+        // and the shell is not a player's build.
+        all.remove(Material.SMOOTH_BASALT);
         return all;
     }
 }

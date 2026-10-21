@@ -427,7 +427,9 @@ public final class Foreman {
             board.addFront(task.id(), new Step.Meal());
             return true;
         }
-        if (shelter(task)) {
+        // Drops despawn in five minutes, and a recover gives up after four. Digging in
+        // for the night would run that clock out, so the dropped things come first.
+        if (!(job.step() instanceof Step.Recover) && shelter(task)) {
             return true;
         }
         if (job.step() instanceof Step.Recover) {
