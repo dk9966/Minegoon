@@ -13,6 +13,8 @@ openrouter:
   api-key: ""
   # Any server that answers OpenRouter's chat completions API.
   url: https://openrouter.ai/api/v1/chat/completions
+  # How long one call may take. A planning turn can sit longer than a chat turn.
+  timeout-seconds: 90
   planner-model: anthropic/claude-opus-5.5
   desk-model: google/gemini-3.8-flash
   advice-model: google/gemini-3.8-flash

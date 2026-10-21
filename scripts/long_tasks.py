@@ -44,8 +44,8 @@ LANES = ("run_a", "run_b", "run_c")
 # Applied only when the suite server starts. The template boot leaves these unset
 # and gets the compose defaults: a normal world, nether on, 2G heap.
 SUITE_ENV = {
-    "LAB_MEMORY": "2560M",
-    "LAB_CAP": "4g",
+    "LAB_MEMORY": os.environ.get("LAB_MEMORY", "2560M"),
+    "LAB_CAP": os.environ.get("LAB_CAP", "4g"),
     "LEVEL_TYPE": "minecraft:flat",
     "ALLOW_NETHER": "false",
 }
@@ -797,16 +797,22 @@ def ensure_template(jar: Path) -> None:
 
 
 def jdk_home() -> Path:
-    """The Java on PATH is 20. Paper's Gradle plugin needs 21 or newer."""
+    """Paper's Gradle plugin needs Java 25. On a Mac that JDK lives under
+    ~/.local/jdks. A Gradle toolchain download (Linux included) lives under
+    ~/.gradle/jdks and is just as good."""
     homes = sorted(Path.home().joinpath(".local/jdks").glob("jdk-*/Contents/Home/bin/java"))
+    homes += sorted(Path.home().joinpath(".gradle/jdks").glob("*/bin/java"))
     if not homes:
-        raise SystemExit("No JDK 25 in ~/.local/jdks, and the Java on PATH is too old to build.")
+        raise SystemExit("No JDK 25 in ~/.local/jdks or ~/.gradle/jdks, and the Java on PATH is too old to build.")
     return homes[-1].resolve().parents[1]
 
 
 def build() -> Path:
     home = jdk_home()
-    say(f"Building the plugin with {home.parent.parent.name}")
+    # A Mac JDK's home directory is named Home; the version is two levels up.
+    # A toolchain JDK's home directory is already the version folder.
+    label = home.parent.parent.name if home.name == "Home" else home.name
+    say(f"Building the plugin with {label}")
     env = os.environ.copy()
     env["JAVA_HOME"] = str(home)
     subprocess.run(

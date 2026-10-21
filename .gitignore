@@ -8,3 +8,4 @@ infra/data/
 infra/lab/
 scripts/results/
 scripts/scripted-model.jsonl
+scripts/live-model/

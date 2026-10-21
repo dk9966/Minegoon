@@ -5,10 +5,18 @@ helper:
 
 openrouter:
   api-key: ""
+  url: https://openrouter.ai/api/v1/chat/completions
+  timeout-seconds: 180
   planner-model: anthropic/claude-opus-5.5
   desk-model: google/gemini-3.8-flash
   advice-model: google/gemini-3.8-flash
   fallback-model: anthropic/claude-opus-5.5
+
+# How much one mission may use before it stops and says why.
+agent:
+  max-turns: 40
+  max-strong-calls: 12
+  max-minutes: 90
 
 trips:
   scan-radius: 48
