@@ -85,10 +85,10 @@ final class Moves {
         }
         int feet = traits(nx, y, nz);
         boolean wet = wading || has(feet, WATER);
-        if (standable(nx, y - 1, nz) || has(feet, CLIMBABLE)) {
+        // A vine with nothing solid under it is not a floor. Walking into one climbs, and the step never finishes.
+        if (standable(nx, y - 1, nz)) {
             double move = wet ? Costs.WATER : clear > 0 ? Costs.WALK : run;
-            double hanging = standable(nx, y - 1, nz) ? 0 : Costs.LADDER_UP;
-            sink.offer(Move.TRAVERSE, nx, y, nz, move + clear + hanging, false);
+            sink.offer(Move.TRAVERSE, nx, y, nz, move + clear, false);
         } else if (has(feet, WATER)) {
             sink.offer(Move.SWIM, nx, y, nz, Costs.WATER + clear, false);
         } else if (grounded && placeable(nx, y - 1, nz)) {

@@ -12,6 +12,7 @@ import dev.minegoon.jobs.MissionBoard;
 import dev.minegoon.jobs.Task;
 import dev.minegoon.models.ModelClient;
 import dev.minegoon.models.ModelClient.ToolCall;
+import dev.minegoon.models.ModelFires;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +70,7 @@ public final class MissionRunner {
     private final Consumer<String> say;
     private final LongSupplier clock;
     private final String helperName;
+    private final ModelFires fires;
 
     /**
      * {@code tools} are what the helper can do; the runner adds write_plan,
@@ -76,7 +78,7 @@ public final class MissionRunner {
      */
     public MissionRunner(ModelClient model, Settings.Agent agent, MissionBoard missions, List<Tool<Mission>> tools,
                          Supplier<String> state, BiPredicate<Check, Mission> met, Consumer<String> say,
-                         LongSupplier clock, String helperName) {
+                         LongSupplier clock, String helperName, ModelFires fires) {
         this.model = model;
         this.agent = agent;
         this.missions = missions;
@@ -87,6 +89,7 @@ public final class MissionRunner {
         this.say = say;
         this.clock = clock;
         this.helperName = helperName;
+        this.fires = fires;
     }
 
     /** Runs a mission until it ends, pauses, or the worker is interrupted. */
@@ -134,17 +137,20 @@ public final class MissionRunner {
             return false;
         }
         String chosen = strong ? agent.plannerModel() : agent.deskModel();
+        String role = strong ? "planner" : "desk";
         boolean planning = mission.plan() == null;
         ToolCall call = pick(mission, chosen, planning ? toolbox.specs(PLANNING) : toolbox.specs());
         if (call == null) {
             return false;
         }
+        fires.fired(strong, role, chosen, call.usage(), call.name());
         missions.counted(mission.id(), strong, call.usage().cost());
         missions.append(mission.id(), Line.call(call.name(), call.arguments()));
+        String who = (strong ? "big " : "small ") + role;
         if (planning && !PLANNING.contains(call.name())) {
-            close(mission.id(), call, Receipt.refused(call.name(), "Write the plan first, with write_plan."), chosen);
+            close(mission.id(), call, Receipt.refused(call.name(), "Write the plan first, with write_plan."), who);
         } else {
-            act(mission.id(), call, chosen);
+            act(mission.id(), call, who);
         }
         return true;
     }

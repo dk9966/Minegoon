@@ -53,11 +53,13 @@ public final class Advisor {
     private final ModelClient router;
     private final String model;
     private final Logger log;
+    private final ModelFires fires;
 
-    public Advisor(ModelClient router, String model, Logger log) {
+    public Advisor(ModelClient router, String model, Logger log, ModelFires fires) {
         this.router = router;
         this.model = model;
         this.log = log;
+        this.fires = fires;
     }
 
     public boolean enabled() {
@@ -96,6 +98,7 @@ public final class Advisor {
         }
         try {
             JsonObject answer = router.ask(model, JUDGE, gap.briefing(), "verdict", verdictSchema(structures));
+            fires.fired(false, "advice", model, null, "verdict");
             String reason = answer.get("reason").getAsString();
             return Optional.of(new Verdict(answer.get("possible").getAsBoolean(), reason,
                 lesson(answer, reason, knownBiome, structures), blocks(answer.getAsJsonArray("blocks"))));
@@ -112,6 +115,7 @@ public final class Advisor {
         }
         try {
             JsonObject answer = router.ask(model, SYSTEM, gap.briefing(), "lesson", schema(structures));
+            fires.fired(false, "advice", model, null, "lesson");
             return lesson(answer, answer.get("note").getAsString(), knownBiome, structures);
         } catch (IOException | RuntimeException e) {
             log.warning("Advice call failed: " + e.getMessage());

@@ -26,6 +26,7 @@ import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Lessons;
 import dev.minegoon.models.Advisor;
 import dev.minegoon.models.ModelClient;
+import dev.minegoon.models.ModelFires;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.planner.Planner;
 import dev.minegoon.safety.BreakGuard;
@@ -383,11 +384,12 @@ public final class Session {
             new Sleeper(body, miner, mover, placer, pickup),
             fighter,
             prospector);
-        Tutor tutor = new Tutor(knowledge, shared.lessons(),
-            new Advisor(shared.router(), settings.adviceModel(), log), vision, structures, main, helper::player,
-            Names::biome, log);
-
         results = new Results(folder.resolve("results.jsonl"));
+        ModelFires fires = new ModelFires(results::modelFire, log);
+        Tutor tutor = new Tutor(knowledge, shared.lessons(),
+            new Advisor(shared.router(), settings.adviceModel(), log, fires), vision, structures, main,
+            helper::player, Names::biome, log);
+
         MissionBoard missions = new MissionBoard(db, results::record);
         Inspector inspector = new Inspector(main, helper);
         foreman = new Foreman(body, new JobBoard(db), missions, inspector, new Planner(shared.cookbook()),
@@ -396,7 +398,7 @@ public final class Session {
         MissionRunner runner = new MissionRunner(shared.router(), settings.agent(), missions,
             new MissionTools(foreman, crew, missions, inspector, vision, senses, helper, Names::biome).all(),
             senses::state, new DoneWhen(main, helper, inspector)::met, helper::say, System::currentTimeMillis,
-            helperName);
+            helperName, fires);
         foreman.runMissionsWith(runner::run);
         helper.onDeath(spot -> {
             diedAt = Bukkit.getCurrentTick();
@@ -407,8 +409,8 @@ public final class Session {
         peek = new Peek(plugin, helper);
         commands = new Commands(helper, foreman, zones, watch, peek);
         desk = new FrontDesk(shared.router(), settings.agent().deskModel(),
-            new DeskTools(commands, foreman, missions, senses).all(), missions, foreman, results, helper::say, log,
-            helperName);
+            new DeskTools(commands, foreman, missions, senses).all(), missions, foreman, results, fires, helper::say,
+            log, helperName);
         listen(helper);
         listen(watch);
         listen(peek);

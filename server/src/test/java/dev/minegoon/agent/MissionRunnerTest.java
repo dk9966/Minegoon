@@ -13,6 +13,7 @@ import dev.minegoon.jobs.Mission.Check;
 import dev.minegoon.jobs.Mission.Line;
 import dev.minegoon.jobs.MissionBoard;
 import dev.minegoon.jobs.Task;
+import dev.minegoon.models.ModelFires;
 import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -42,12 +43,14 @@ class MissionRunnerTest {
     private final List<String> said = new ArrayList<>();
     private final AtomicLong clock = new AtomicLong(System.currentTimeMillis());
     private final List<Long> carried = new ArrayList<>();
+    private final List<String> fires = new ArrayList<>();
     private BiPredicate<Check, Mission> met = (check, mission) -> true;
 
     @BeforeEach
     void open() throws SQLException {
         db = new Database(folder.resolve("minegoon.db"));
         missions = new MissionBoard(db, ended::add);
+        fires.clear();
     }
 
     @AfterEach
@@ -66,6 +69,7 @@ class MissionRunnerTest {
         long id = run(model, AGENT);
 
         assertEquals(List.of("planner", "cheap", "cheap", "planner", "cheap"), model.models);
+        assertEquals(List.of("big planner", "small desk", "small desk", "big planner", "small desk"), fires);
         Mission mission = missions.mission(id).orElseThrow();
         assertEquals(Task.Status.DONE, mission.status());
         assertEquals(5, mission.modelCalls());
@@ -236,8 +240,10 @@ class MissionRunnerTest {
                 carried.add(mission.pending().orElseThrow().task());
                 return Receipt.confirmed("fetch", "Holding 4 oak_log.");
             }));
+        ModelFires recorded = new ModelFires(
+            fire -> fires.add((fire.big() ? "big " : "small ") + fire.role()), null);
         return new MissionRunner(model, agent, missions, tools, () -> "at 0 64 0", (check, m) -> met.test(check, m),
-            said::add, clock::get, "Builder");
+            said::add, clock::get, "Builder", recorded);
     }
 
     /** Only the name is read: the runner never touches the world. */

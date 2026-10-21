@@ -62,6 +62,25 @@ class PathfinderTest {
     }
 
     @Test
+    void willNotWalkAlongVinesWithNothingUnderThem() {
+        Grid grid = new Grid().fill(1, -1, 0, 6, -1, 0, AIR).fill(1, 0, 0, 6, 0, 0, VINE);
+        Path path = find(grid, BLOCKS, new Pos(8, 0, 0));
+        assertTrue(path.complete());
+        assertTrue(path.steps().stream().noneMatch(step -> step.to().y() == 0 && step.to().z() == 0
+            && step.to().x() >= 1 && step.to().x() <= 6
+            && (step.move() == Move.TRAVERSE || step.move() == Move.DIAGONAL)));
+    }
+
+    @Test
+    void walksThroughVinesStandingOnSolidGround() {
+        Grid grid = new Grid().fill(1, 0, 0, 6, 0, 0, VINE);
+        Path path = find(grid, Kit.BARE, new Pos(8, 0, 0));
+        assertTrue(path.complete());
+        assertTrue(path.steps().stream().anyMatch(step -> step.move() == Move.TRAVERSE && step.to().x() >= 1
+            && step.to().x() <= 6 && step.to().y() == 0));
+    }
+
+    @Test
     void climbsALadder() {
         Grid grid = new Grid().fill(3, 0, -40, 40, 5, 40, STONE).fill(2, 0, 0, 2, 5, 0, LADDER);
         Path path = find(grid, Kit.BARE, new Pos(4, 6, 0));

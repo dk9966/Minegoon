@@ -8,6 +8,7 @@ import dev.minegoon.jobs.MissionBoard;
 import dev.minegoon.jobs.Results;
 import dev.minegoon.models.ModelClient;
 import dev.minegoon.models.ModelClient.ToolCall;
+import dev.minegoon.models.ModelFires;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -43,18 +44,21 @@ public final class FrontDesk {
     private final MissionBoard missions;
     private final Foreman foreman;
     private final Results results;
+    private final ModelFires fires;
     private final Consumer<String> say;
     private final Logger log;
     private final String helperName;
 
     public FrontDesk(ModelClient model, String deskModel, List<Tool<Speaker>> tools, MissionBoard missions,
-                     Foreman foreman, Results results, Consumer<String> say, Logger log, String helperName) {
+                     Foreman foreman, Results results, ModelFires fires, Consumer<String> say, Logger log,
+                     String helperName) {
         this.model = model;
         this.deskModel = deskModel;
         this.toolbox = new Toolbox<>(tools, () -> "");
         this.missions = missions;
         this.foreman = foreman;
         this.results = results;
+        this.fires = fires;
         this.say = say;
         this.log = log;
         this.helperName = helperName;
@@ -79,7 +83,8 @@ public final class FrontDesk {
             return;
         }
         Receipt receipt = toolbox.run(call, speaker);
-        missions.event(mission.map(Mission::id).orElse(null), "desk: " + call.name() + " " + call.arguments()
+        fires.fired(false, "desk", deskModel, call.usage(), call.name());
+        missions.event(mission.map(Mission::id).orElse(null), "small desk: " + call.name() + " " + call.arguments()
             + " -> " + (receipt.confirmed() ? "ok" : "failed") + ", %d+%d tokens, cost %.5f".formatted(
                 call.usage().promptTokens(), call.usage().completionTokens(), call.usage().cost()));
         String said = receipt.confirmed() ? receipt.observed() : "Sorry, I can't: " + receipt.observed();

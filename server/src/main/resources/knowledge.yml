@@ -115,11 +115,13 @@ trips:
   # iron is found well above that, and a broken pickaxe is replaced anyway.
   mine:
     stone_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
-  # Down the caves, not stairs, so the digging is short: one iron pickaxe,
-  # which diamond needs. The axe is the weapon. Blocks are for climbing and
-  # bridging out of a cave.
+  # Down the caves. When no opening in sight is actually deep, the cave move
+  # stairs toward the best height instead. That staircase is a few hundred
+  # blocks, so stone pickaxes do it and the iron one is kept for the ore.
+  # The axe is the weapon. Blocks are for climbing and bridging out of a cave.
   deep:
     iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 1
+    stone_pickaxe: 4
     stone_axe|iron_axe|diamond_axe|netherite_axe: 1
     shield: 1
     cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: 6

@@ -178,6 +178,12 @@ public final class PathExecutor {
         Order tick() {
             Player player = body.player();
             Location at = player.getLocation();
+            Step step = steps.get(index);
+            // A vine under the feet makes forward climb instead of walk. Break it before the step is judged.
+            Pos occupied = Pos.standing(at);
+            if (step.move() != Move.CLIMB_UP && step.move() != Move.CLIMB_DOWN && vine(body.live(), occupied)) {
+                return new Dig(occupied);
+            }
             Pos feet = feet(at, player);
             advanced = false;
             routeTicks++;
@@ -192,7 +198,7 @@ public final class PathExecutor {
                     return DONE;
                 }
             }
-            Step step = steps.get(index);
+            step = steps.get(index);
             if (++stepTicks > steps.get(furthest).cost() + STEP_SLACK) {
                 return new Failed("too long on " + step + ", " + state(player));
             }
@@ -292,6 +298,13 @@ public final class PathExecutor {
                 return null;
             }
             BlockReader live = body.live();
+            if (step.move().horizontal()) {
+                for (Pos cell : List.of(step.to(), step.to().offset(0, 1, 0))) {
+                    if (vine(live, cell)) {
+                        return new Dig(cell);
+                    }
+                }
+            }
             for (Pos cell : step.clears()) {
                 int traits = traits(live, cell);
                 if (has(traits, PASSABLE)) {
@@ -412,5 +425,14 @@ public final class PathExecutor {
 
     private static int traits(BlockReader live, Pos cell) {
         return Traits.of(live.type(cell.x(), cell.y(), cell.z()));
+    }
+
+    /** Vines and the like: passable, so a route walks into them, but pressing a key climbs. Ladders are not replaceable. */
+    private static boolean vine(BlockReader live, Pos cell) {
+        return vine(traits(live, cell));
+    }
+
+    private static boolean vine(int traits) {
+        return has(traits, CLIMBABLE) && has(traits, REPLACEABLE);
     }
 }

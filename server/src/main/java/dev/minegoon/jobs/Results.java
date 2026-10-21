@@ -1,6 +1,7 @@
 package dev.minegoon.jobs;
 
 import com.google.gson.Gson;
+import dev.minegoon.models.ModelFires;
 import dev.minegoon.trips.Fighter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -56,6 +57,23 @@ public final class Results {
     public void desk(Desk desk) {
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("desk", desk);
+        append(line);
+    }
+
+    /** One answer from the big planner or from a small desk or advice call. */
+    public void modelFire(ModelFires.Fire fire) {
+        Map<String, Object> line = new LinkedHashMap<>();
+        Map<String, Object> call = new LinkedHashMap<>();
+        call.put("size", fire.big() ? "big" : "small");
+        call.put("role", fire.role());
+        call.put("asked", fire.asked());
+        call.put("answered", fire.answered());
+        call.put("what", fire.what());
+        call.put("prompt_tokens", fire.promptTokens());
+        call.put("completion_tokens", fire.completionTokens());
+        call.put("cost", fire.cost());
+        call.put("at", fire.at());
+        line.put("model_fire", call);
         append(line);
     }
 

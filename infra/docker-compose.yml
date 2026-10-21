@@ -17,6 +17,8 @@ services:
       VIEW_DISTANCE: 8
       SIMULATION_DISTANCE: 8
       MOTD: Minegoon practice server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:25565:25565"
     volumes:

@@ -222,7 +222,7 @@ public final class Prospector {
         private boolean move(Way way, Checkpoint checkpoint) {
             return switch (way) {
                 case CLIFF -> walkToFirst(vision.cliffs(TARGETS).stream().map(Vision.Cliff::foot).toList(), checkpoint);
-                case PEAK -> walkToFirst(vision.peaks(mover.feet().y() + PEAK_ABOVE, TARGETS), checkpoint);
+                case PEAK -> peak(checkpoint);
                 case CAVE -> cave(checkpoint);
                 case CAVERN -> cavern(checkpoint);
                 case DIG -> dig(checkpoint);
@@ -241,7 +241,12 @@ public final class Prospector {
             return walkToFirst(sightings.stream().map(Structures.Sighting::at).toList(), checkpoint);
         }
 
-        /** Down into a cave in sight, but not below where the thing stops showing up. */
+        /**
+         * Down into a cave in sight that is actually deeper, but not below where
+         * the thing stops showing up. A shallow mouth does not count: with no
+         * deep opening, stairs go toward the best height instead of wandering
+         * the surface. That is a staircase, not a strip mine.
+         */
         private boolean cave(Checkpoint checkpoint) {
             Pos feet = mover.feet();
             if (find.best() != null && feet.y() <= find.best() + 2) {
@@ -250,7 +255,27 @@ public final class Prospector {
             List<Pos> openings = vision.caves(feet.y() - 3, TARGETS).stream()
                 .filter(pos -> pos.y() >= find.low())
                 .toList();
+            List<Pos> deeper = openings.stream().filter(pos -> pos.y() <= feet.y() - 8).toList();
+            if (walkToFirst(deeper, checkpoint)) {
+                return true;
+            }
+            if (find.best() != null && feet.y() > find.best() + 8 && tunneler.armed()
+                && tunneler.down(Math.max(find.best(), feet.y() - STAIRS), STAIRS, checkpoint)) {
+                return true;
+            }
             return walkToFirst(openings, checkpoint);
+        }
+
+        /** High ground, while still on the surface. Climbing back out of a hole does not find more ore. */
+        private boolean peak(Checkpoint checkpoint) {
+            Pos feet = mover.feet();
+            if (surface(feet) - feet.y() > BURIED) {
+                return false;
+            }
+            if (find.best() != null && feet.y() <= find.best() + CAVERN_ABOVE) {
+                return false;
+            }
+            return walkToFirst(vision.peaks(feet.y() + PEAK_ABOVE, TARGETS), checkpoint);
         }
 
         /**
