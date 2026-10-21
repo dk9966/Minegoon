@@ -6,6 +6,7 @@ import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
@@ -55,7 +56,8 @@ public final class Miner {
     private Material prepare(Pos pos) {
         Player player = body.player();
         Block block = pos.block(player.getWorld());
-        if (Blocks.passable(block.getType())) {
+        // Vines are passable, but walking into them climbs. They still have to be broken.
+        if (Blocks.passable(block.getType()) && !clinging(block.getType())) {
             return null;
         }
         BlockReader live = body.live();
@@ -73,6 +75,11 @@ public final class Miner {
         Hands.holdFastestFor(player, block.getBlockData());
         Look.at(player, center);
         return block.getType();
+    }
+
+    /** A vine: the body can be inside it, and it is not a ladder, so it can be broken. */
+    private static boolean clinging(Material type) {
+        return Tag.CLIMBABLE.isTagged(type) && Tag.REPLACEABLE.isTagged(type);
     }
 
     private float hit(Pos pos, Material target, double progress, int tick) {

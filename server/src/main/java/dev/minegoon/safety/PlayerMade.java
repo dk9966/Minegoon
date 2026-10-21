@@ -58,9 +58,10 @@ final class PlayerMade {
                 all.add(material);
             }
         }
-        // Geodes are wrapped in it. A staircase to diamond level runs into them,
-        // and the shell is not a player's build.
+        // Geodes are wrapped in smooth basalt, and trial chambers are built of tuff.
+        // A staircase to diamond level runs into both, and neither is a player's build.
         all.remove(Material.SMOOTH_BASALT);
+        all.removeIf(material -> material.name().contains("TUFF"));
         return all;
     }
 }

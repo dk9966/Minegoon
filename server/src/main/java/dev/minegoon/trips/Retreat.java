@@ -7,7 +7,9 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
+import dev.minegoon.world.Blocks;
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -180,6 +182,7 @@ public final class Retreat implements Checkpoint {
         }
         helper.say("I'm hurt, so I'll stop and heal.");
         for (int second = 0; second < HEAL_SECONDS; second++) {
+            main.run(this::digOut);
             fighter.defend();
             switch (main.call(this::mend)) {
                 case HEALED -> {
@@ -198,6 +201,20 @@ public final class Retreat implements Checkpoint {
     }
 
     private enum Mend { HEALED, HEALING, STARVING }
+
+    /** A body left inside a block keeps taking damage until that block is gone. */
+    private void digOut() {
+        Player player = helper.player();
+        if (player == null || player.isDead()) {
+            return;
+        }
+        Block feet = player.getLocation().getBlock();
+        for (Block block : new Block[] {feet.getRelative(0, 1, 0), feet}) {
+            if (!Blocks.passable(block.getType())) {
+                player.breakBlock(block);
+            }
+        }
+    }
 
     /** Health only comes back on a nearly full food bar, so keep eating while waiting. */
     private Mend mend() {
