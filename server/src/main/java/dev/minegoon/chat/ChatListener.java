@@ -13,10 +13,12 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
 /**
- * Reads chat. A ! line is a command, and so is a plain sentence such as
- * "get me 5 diamonds". Anything else that mentions the helper by name goes
- * to its front desk, which asks a model. One helper hears every player.
- * Several helpers each hear the world they are standing in.
+ * Reads chat. A sentence for the helper, such as "get me 5 diamonds" or one
+ * that names it, goes to its front desk: a model reads it and picks the code
+ * to run. Three kinds skip the model: a ! line, which runs that command as
+ * typed; a plain stop, pause, resume or come, which must act at once; and,
+ * with no key, any plain command. One helper hears every player. Several
+ * helpers each hear the world they are standing in.
  */
 public final class ChatListener implements Listener {
 
@@ -40,10 +42,10 @@ public final class ChatListener implements Listener {
         }
         String text = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
         Commands commands = session.commands();
-        if (text.startsWith("!") || commands.understands(text)) {
+        FrontDesk desk = session.desk();
+        if (text.startsWith("!") || commands.controls(text) || (!desk.enabled() && commands.understands(text))) {
             Thread.ofVirtual().start(() -> commands.handle(speaker(player), text));
-        } else if (session.desk().enabled() && mentions(session, text)) {
-            FrontDesk desk = session.desk();
+        } else if (desk.enabled() && (commands.understands(text) || mentions(session, text))) {
             Thread.ofVirtual().start(() -> desk.hear(speaker(player), text));
         }
     }

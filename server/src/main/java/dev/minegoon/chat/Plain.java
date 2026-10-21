@@ -31,6 +31,9 @@ final class Plain {
     private static final Set<String> ZONE_SKIP = Set.of(
         "please", "me", "the", "this", "area", "nearby", "around", "here", "blocks", "block", "radius", "of");
 
+    /** The brakes: they act at once and every time, never waiting on a model. */
+    private static final Set<String> CONTROLS = Set.of("stop", "pause", "resume", "come");
+
     /** Words that look like a get but are not an item, so plain chat is not stolen. */
     private static final Set<String> NOT_ITEM = Set.of("it", "that", "this", "them", "something", "stuff", "things");
 
@@ -54,6 +57,10 @@ final class Plain {
             case "protect", "allow" -> readZone(verb, rest, strict);
             default -> readSimple(verb, rest, strict);
         };
+    }
+
+    static boolean isControl(String line, String helperName) {
+        return read(line, helperName, false).map(order -> CONTROLS.contains(order.verb())).orElse(false);
     }
 
     private static Optional<Order> readGet(List<String> rest, boolean strict) {

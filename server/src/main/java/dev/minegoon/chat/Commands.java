@@ -44,6 +44,11 @@ public final class Commands {
         return Plain.read(line, helper.name(), false).isPresent();
     }
 
+    /** A plain stop, pause, resume or come. */
+    public boolean controls(String line) {
+        return Plain.isControl(line, helper.name());
+    }
+
     public void handle(Speaker speaker, String line) {
         boolean bang = line.trim().startsWith("!");
         Plain.read(line, helper.name(), bang).ifPresentOrElse(

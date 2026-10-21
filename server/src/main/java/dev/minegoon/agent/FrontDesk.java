@@ -19,7 +19,8 @@ import java.util.stream.Collectors;
  * Reads one sentence aimed at the helper, such as "Builder, what are you
  * carrying?", with one cheap model turn: answers it, acts on it at once, or
  * starts or changes a mission. A sentence during a mission is briefed with the
- * mission's plan and its latest lines. Typed commands never come here.
+ * mission's plan and its latest lines. A ! line and the plain brakes (stop,
+ * pause, resume, come) never come here.
  */
 public final class FrontDesk {
 

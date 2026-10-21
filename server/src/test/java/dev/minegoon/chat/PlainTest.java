@@ -25,6 +25,16 @@ class PlainTest {
     }
 
     @Test
+    void onlyTheBrakesAreControls() {
+        assertEquals(true, Plain.isControl("stop", "Builder"));
+        assertEquals(true, Plain.isControl("Builder, come here", "Builder"));
+        assertEquals(true, Plain.isControl("pause", "Builder"));
+        assertEquals(false, Plain.isControl("get me 5 diamonds", "Builder"));
+        assertEquals(false, Plain.isControl("protect 20 blocks", "Builder"));
+        assertEquals(false, Plain.isControl("Builder, stop mining and get me some wool", "Builder"));
+    }
+
+    @Test
     void readsTheOtherCommands() {
         assertEquals(order("come", 0, ""), Plain.read("come here", "Builder", false));
         assertEquals(order("come", 0, ""), Plain.read("can you come to me", "Builder", false));
