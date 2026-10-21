@@ -14,6 +14,11 @@ services:
       TYPE: PAPER
       VERSION: "26.3"
       PAPER_CHANNEL: experimental
+      # The image otherwise fetches Paper's sample configs from GitHub on every boot.
+      SKIP_DOWNLOAD_DEFAULTS: "true"
+      # Set to a jar already in the data folder, such as /data/paper.jar, when
+      # the image cannot reach Paper's download on its own.
+      PAPER_CUSTOM_JAR: ${PAPER_CUSTOM_JAR:-}
       MEMORY: ${LAB_MEMORY:-2G}
       SEED: "minegoon"
       MODE: survival
@@ -25,5 +30,7 @@ services:
       ALLOW_NETHER: ${ALLOW_NETHER:-true}
       MOTD: Minegoon lab
       ENABLE_RCON: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ${LAB_DATA}:/data

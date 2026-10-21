@@ -1,12 +1,13 @@
 package dev.minegoon;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import org.bukkit.configuration.file.FileConfiguration;
 
 /** The plugin's config.yml. The API key lives only on the server, never in git. */
-public record Settings(String helperName, String apiKey, URI apiUrl, Agent agent, String adviceModel, String fallbackModel,
-                       boolean lab, List<String> lanes) {
+public record Settings(String helperName, String apiKey, URI apiUrl, Duration requestTimeout, Agent agent,
+                       String adviceModel, String fallbackModel, boolean lab, List<String> lanes) {
 
     /**
      * The two models a spoken request uses, and how much one mission may use.
@@ -21,6 +22,7 @@ public record Settings(String helperName, String apiKey, URI apiUrl, Agent agent
             config.getString("helper.name", "Builder"),
             config.getString("openrouter.api-key", ""),
             URI.create(config.getString("openrouter.url")),
+            Duration.ofSeconds(Math.max(5, config.getInt("openrouter.timeout-seconds", 90))),
             new Agent(
                 config.getString("openrouter.planner-model"),
                 config.getString("openrouter.desk-model"),

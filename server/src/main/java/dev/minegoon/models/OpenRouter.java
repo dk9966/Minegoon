@@ -21,18 +21,24 @@ import java.util.function.Function;
  */
 public final class OpenRouter implements ModelClient {
 
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(90);
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Gson gson = new Gson();
     private final String apiKey;
     private final URI endpoint;
     private final String fallbackModel;
+    private final Duration timeout;
 
     public OpenRouter(String apiKey, URI endpoint, String fallbackModel) {
+        this(apiKey, endpoint, fallbackModel, DEFAULT_TIMEOUT);
+    }
+
+    public OpenRouter(String apiKey, URI endpoint, String fallbackModel, Duration timeout) {
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.endpoint = endpoint;
         this.fallbackModel = fallbackModel;
+        this.timeout = timeout;
     }
 
     @Override
@@ -86,7 +92,7 @@ public final class OpenRouter implements ModelClient {
 
     private <T> T send(JsonObject body, Function<JsonObject, T> read) throws IOException {
         HttpRequest request = HttpRequest.newBuilder(endpoint)
-            .timeout(TIMEOUT)
+            .timeout(timeout)
             .header("Authorization", "Bearer " + apiKey)
             .header("Content-Type", "application/json")
             .header("X-Title", "Minegoon")

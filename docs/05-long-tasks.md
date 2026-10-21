@@ -351,6 +351,8 @@ It needs `openrouter.api-key` in the lab server's `plugins/Minegoon/config.yml`.
 
 With no key, `scripts/scripted_model.py` can stand in for the models. It answers each desk turn from words in the sentence, and each mission with a fixed plan for its request. That checks that chat, the desk, missions, tools and results work in a real game, but not what a real model would choose. Run it on the machine, then set `api-key: stand-in` and `url: http://172.17.0.1:8765/api/v1/chat/completions` under `openrouter:` in `infra/data/plugins/Minegoon/config.yml` before the template world is made. Every request and reply goes to `scripts/scripted-model.jsonl`.
 
+`scripts/live_model.py` is the same kind of endpoint, except it does not choose. Each briefing is written to `scripts/live-model/pending/`, and the call waits until a matching file appears under `scripts/live-model/answers/`. That is how pass 2 ran without an OpenRouter key. The lab container reaches the host at `host.docker.internal` (see `extra_hosts` in the lab compose file).
+
 | Task | Said or typed | Passes when |
 |---|---|---|
 | say-strip-mine | "strip mine for 1 diamond", with the deep kit | Done, and some `get_items` call ordered `dig` |
@@ -388,4 +390,21 @@ Both typed failures are open problems in the task code from before this phase; t
 
 One thing to watch with a real model: every line of the mission log repeats the helper's state ("Now at ... in jungle, health ..."), so a long mission's briefing grows by about that much per turn.
 
-Next: the same pass with a real key, three repeats.
+### Agent pass 2, with grok-4.7
+
+October 21, 2026. One repeat, from spawn, on the seed `minegoon` world. There was no OpenRouter key on this machine, so the lab's `openrouter.url` pointed at `scripts/live_model.py` and grok-4.7 chose every tool call and every piece of advice. The cost column is $0.000 because nothing was billed. Token counts in the log are a rough size of the briefing, not a provider's usage report. This pass is about the choices, and about whether the helper then did the work.
+
+| Task | Done | Time (s) | Notes |
+|---|---|---|---|
+| say-strip-mine | 0/1 | 1132 | 2 turns, 1 planner call. The plan was "hold 1 diamond" and `get_items` was ordered `dig`. The body then sat at y=19 digging into water behind gravel until the time limit. |
+| say-wool | 0/1 | 414 | 2 turns, 1 planner call. `get_items` carried the `plains` order. The body never left a jungle tree: a walk step onto a vine over leaves timed out, over and over. |
+| say-logs-stone | 0/1 | 530 | 5 turns, 1 planner call. It got 4 jungle logs, then 4 cobblestone, then came back. `finish` was refused because the pick had used the logs (1 jungle log and 30 cobblestone left). The time limit hit before the replacement logs came back. |
+| say-carrying | 1/1 | 20 | One desk turn: `inventory`, "Holding nothing." No mission. |
+| say-bedrock | 1/1 | 51 | One desk answer saying bedrock cannot be broken or crafted. No mission. |
+| diamonds (typed) | 0/1 | 904 | 4 deaths. It was told to follow a cave down to about y=-59 and still walked peaks on the surface, then died at night. |
+| sheep (typed) | 0/1 | 303 | No model call. It roamed and found no sheep. The harness stopped it at the time limit, which the result line calls "stopped by a player". |
+| bedrock (typed) | 1/1 | 56 | Refused up front, with the same reason as the spoken one. |
+
+The desk and the planner chose the right tool every time they were asked: a mission for a job, `dig` only for the strip mine, `plains` for the wool, `inventory` for the question, and a refusal for bedrock. The misses after that are the same body problems as the skills passes (vines, a dig that will not go through water, diamonds that never go underground, sheep that are not where it looks), plus one planning miss: a "done" check that asks for logs the next step is going to spend.
+
+Next: the same eight tasks, three repeats, with a real OpenRouter key in the lab config, once the vine stall and the water-behind-gravel dig are fixed. Until then another model pass will time out in the same places.
