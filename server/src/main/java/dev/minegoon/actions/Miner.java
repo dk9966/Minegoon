@@ -22,10 +22,19 @@ public final class Miner {
     }
 
     public Receipt mine(Pos pos) {
+        return mine(pos, false);
+    }
+
+    /**
+     * {@code throughWater} is for digging the block over a head that is already
+     * under water. The water beside that block is the water the body is in, so
+     * it is not a new flood. Lava still stops the break.
+     */
+    public Receipt mine(Pos pos, boolean throughWater) {
         String action = "mine " + pos;
         Material target;
         try {
-            target = body.main().call(() -> prepare(pos));
+            target = body.main().call(() -> prepare(pos, throughWater));
         } catch (ActionFailed refused) {
             return Receipt.refused(action, refused.getMessage());
         }
@@ -53,7 +62,7 @@ public final class Miner {
     }
 
     /** Returns the block type to mine, null if there is nothing to mine, or throws if not allowed. */
-    private Material prepare(Pos pos) {
+    private Material prepare(Pos pos, boolean throughWater) {
         Player player = body.player();
         Block block = pos.block(player.getWorld());
         // Vines are passable, but walking into them climbs. They still have to be broken.
@@ -65,7 +74,8 @@ public final class Miner {
         if (!body.policy().mayBreak(live, pos.x(), pos.y(), pos.z())) {
             throw new ActionFailed("not allowed to break " + name + " at " + pos);
         }
-        if (Digging.floodsIfOpened(live, pos.x(), pos.y(), pos.z())) {
+        if (throughWater ? Digging.lavaBeside(live, pos.x(), pos.y(), pos.z())
+                : Digging.floodsIfOpened(live, pos.x(), pos.y(), pos.z())) {
             throw new ActionFailed("liquid behind " + name + " at " + pos);
         }
         Location center = block.getLocation().add(0.5, 0.5, 0.5);

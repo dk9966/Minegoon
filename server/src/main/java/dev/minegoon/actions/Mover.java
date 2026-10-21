@@ -227,7 +227,7 @@ public final class Mover {
                 Pos above = Pos.standing(player.getLocation()).offset(0, 2, 0);
                 return way == null && !has(traits(body.live(), above), PASSABLE) ? above : null;
             });
-            if (roof != null && !miner.mine(roof).confirmed()) {
+            if (roof != null && !miner.mine(roof, true).confirmed()) {
                 return;
             }
         }

@@ -61,6 +61,15 @@ public final class Digging implements Clearance {
             || Blocks.fluid(world.type(x, y, z - 1));
     }
 
+    /** Lava next to this block. Water the body is already in does not count. */
+    public static boolean lavaBeside(BlockReader world, int x, int y, int z) {
+        return world.type(x, y + 1, z) == Material.LAVA
+            || world.type(x + 1, y, z) == Material.LAVA
+            || world.type(x - 1, y, z) == Material.LAVA
+            || world.type(x, y, z + 1) == Material.LAVA
+            || world.type(x, y, z - 1) == Material.LAVA;
+    }
+
     /** Vanilla's break time for a grounded player holding {@code tool}. */
     public static double ticks(BlockData block, ItemStack tool) {
         float hardness = block.getMaterial().getHardness();
