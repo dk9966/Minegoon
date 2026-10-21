@@ -1,0 +1,49 @@
+#cloud-config
+# Always-on host for the Minegent agents. Paste this file into the "user data"
+# (cloud-init) box when creating an Ubuntu 24.04 or 26.04 server, and add your
+# SSH key in the provider's form. Steps after first boot: docs/05-cloud-deployment.md
+
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - sqlite3
+  - ufw
+
+users:
+  - name: minegent
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-minegent.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+  # Missions run for days; without rotation, container logs eventually fill the disk.
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "local",
+        "log-opts": { "max-size": "20m", "max-file": "5" }
+      }
+
+runcmd:
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - usermod -aG docker minegent
+  - install -d -m 700 -o minegent -g minegent /home/minegent/.ssh
+  - install -m 600 -o minegent -g minegent /root/.ssh/authorized_keys /home/minegent/.ssh/authorized_keys
+  - install -d -o minegent -g minegent /opt/minegent
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw allow in on tailscale0
+  - ufw --force enable
+  - systemctl restart ssh

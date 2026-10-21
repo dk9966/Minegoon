@@ -264,7 +264,7 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 | Phase | What | Exit test | Status |
 |---|---|---|---|
 | 0 | Research and planning docs | These three docs written | Done (Oct 8, 2026) |
-| 1 | World and body hello | Local 26.3 server running; you and the bot both in the world; bot walks to you on `!come` | Not started |
+| 1 | World and body hello | Apex 26.3 server set up per `05-cloud-deployment.md`; bot runs on the cloud machine, logs in through AuthMe, reconnects after an Apex restart, and walks to you on `!come` | Cloud machine config written; accounts not yet created |
 | 2 | Body tools and notebook | Mine AI MCP's body ported and running against 26.3 through the translator; receipts and SQLite memory working; protected zones in place | Not started |
 | 3 | Brain loop | Job board, inspector, planner, foreman. First mission: "full iron armor from a fresh spawn," which passes 8 out of 10 lab runs | Not started |
 | 4 | Dragon | Full dragon mission on normal difficulty, logged from start to finish; then a success-rate measurement over several seeds | Not started |
@@ -274,7 +274,9 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 
 ### Notes for the next phase
 
-- Phase 1 setup is in `03-deployment-strategy.md`.
+- Phase 1 setup: the real world (Apex) and the agent machine are in `05-cloud-deployment.md`; the local lab world is in `03-deployment-strategy.md`.
+- The agent machine is provisioned by `infra/cloud/cloud-init.yaml` and reads secrets from `/opt/minegent/.env` (template: `infra/cloud/.env.example`). Phase 1 should add a compose file there with `restart: unless-stopped`, and bind any dashboard port to the Tailscale address or `127.0.0.1`.
+- Mineflayer can't answer AuthMe's login dialogs, so dialogs are off and the bot types `/login` in chat after it spawns.
 - Before porting Mine AI MCP's body, check whether their pinned Mineflayer fork works through ViaBackwards on 26.3, or needs rebasing onto upstream Mineflayer 4.39.0 (which natively supports up to 26.1).
 - Some of Mine AI MCP's development tools (Mine Labs) need private GitHub access. Plan to build our own lab scenarios instead of relying on theirs.
 - The testing method (same seeds, one setting at a time, harness-judged finish lines, read the first mistake in the logs) is recorded in `04-testing-dialogue.md`. Use it when Phase 3's lab starts.

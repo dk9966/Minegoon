@@ -15,6 +15,8 @@ Facts checked October 8, 2026:
 | Baritone | v1.20.0 (Sep 23) | Yes |
 | Carpet mod (server-side fake players) | 26.3 (Sep 15) | Yes |
 
+> **Update, October 21, 2026:** the real world now lives on an Apex Hosting server, and the agents run on an always-on cloud machine. See `05-cloud-deployment.md`. The local Docker server described below is now the lab world only.
+
 ---
 
 ## The short story
@@ -159,7 +161,7 @@ The version has to be set explicitly. The server announces 26.3, which Mineflaye
 
 A castle can take all night. If your Mac sleeps, the server and bot stop.
 - **For now:** run `caffeinate -dims` while a long mission runs. The job board means a stop costs nothing but time.
-- **Later:** move the same Docker setup to a small always-on cloud machine (about 4 CPU cores and 8 GB of RAM to start) and join it over a private VPN such as Tailscale. Still offline mode, still private, and still no account for the bot.
+- **Now superseded:** the world moved to Apex and the agents to an always-on cloud machine. See `05-cloud-deployment.md`.
 
 ---
 
