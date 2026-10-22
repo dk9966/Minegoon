@@ -33,6 +33,7 @@ import dev.minegoon.safety.BreakGuard;
 import dev.minegoon.safety.BreakPolicy;
 import dev.minegoon.safety.Zones;
 import dev.minegoon.spawn.Helper;
+import dev.minegoon.trips.Bestiary;
 import dev.minegoon.trips.Farmer;
 import dev.minegoon.trips.Fighter;
 import dev.minegoon.trips.Filler;
@@ -402,6 +403,13 @@ public final class Session {
         foreman.runMissionsWith(runner::run);
         helper.onDeath(spot -> {
             diedAt = Bukkit.getCurrentTick();
+            org.bukkit.entity.Player dead = helper.player();
+            if (dead != null) {
+                var cause = dead.getLastDamageCause();
+                log.info(helperName + " died at " + Pos.of(spot) + " from "
+                    + (cause == null ? "unknown" : cause.getCause().name().toLowerCase()) + ", fighting "
+                    + fighter.engaged() + ", around: " + Bestiary.nearby(dead, 16));
+            }
             foreman.onDeath(spot);
         });
 

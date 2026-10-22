@@ -332,6 +332,19 @@ public final class Fighter {
     /** What a fight does after a tick: carry on, walk round to the monster, or stop. */
     private enum Beat { ON, CLOSE_IN, OVER }
 
+    /**
+     * Another creeper closing in during a fight: the fight is dropped so the
+     * group is weighed again with the creeper first, and a hissing one is
+     * dodged. Nothing else in a fight watches it.
+     */
+    private static boolean creeperComing(Player self, LivingEntity enemy) {
+        double near = CREEPER_SAFE + 2;
+        return self.getNearbyEntities(near, near, near).stream()
+            .anyMatch(entity -> entity instanceof Creeper creeper && !creeper.isDead()
+                && !creeper.getUniqueId().equals(enemy.getUniqueId())
+                && (creeper.getFuseTicks() > 0 || huntingMe(self, creeper)));
+    }
+
     private static boolean huntingMe(Player self, Entity entity) {
         return entity instanceof Mob mob && mob.getTarget() != null
             && mob.getTarget().getUniqueId().equals(self.getUniqueId());
@@ -396,6 +409,9 @@ public final class Fighter {
             }
             if (self.getHealth() <= FLEE_HEALTH && !(enemy instanceof Creeper)) {
                 return flee(self, enemy) ? Beat.ON : Beat.OVER;
+            }
+            if (creeperComing(self, enemy)) {
+                return Beat.OVER;
             }
             aim(self, enemy);
             boolean ready = self.getAttackCooldown() >= READY;
