@@ -534,6 +534,11 @@ public final class Foreman {
         }
         sheltered = true;
         crew.retreat().nightCovered();
+        Optional<Job> next = board.next(task.id());
+        if (hasWeapon() && next.isPresent() && crew.prospector().underground(next.get().step())) {
+            say("It's night up here, and the next thing I need is down in the caves, so I'll head down now.");
+            return false;
+        }
         if (crew.sleeper().hasBed()) {
             say("It's night up here. I'll sleep and pick this up in the morning.");
             board.addFront(task.id(), new Step.Sleep());

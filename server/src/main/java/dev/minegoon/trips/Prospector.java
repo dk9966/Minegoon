@@ -120,6 +120,16 @@ public final class Prospector {
         return names.isEmpty() ? null : knowledge.canonical(names.getFirst());
     }
 
+    /** The search for what a step is after goes down through caves, where night makes no difference. */
+    public boolean underground(Step step) {
+        List<String> names = subjects(step);
+        if (names.isEmpty() || !(step instanceof Step.Gather)) {
+            return false;
+        }
+        List<Way> ways = orders.over(lessons.apply(knowledge.canonical(names.getFirst()), knowledge.find(names))).ways();
+        return ways.contains(Way.CAVE) || ways.contains(Way.CAVERN);
+    }
+
     /** What a step looks for, in the game's names. */
     public static List<String> subjects(Step step) {
         return switch (step) {
