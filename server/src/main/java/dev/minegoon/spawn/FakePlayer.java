@@ -116,11 +116,14 @@ public final class FakePlayer {
         handle.level().getChunkSource().move(handle);
     }
 
-    /** Turns the body and head without a teleport, so movement in progress keeps its speed. */
+    /**
+     * Turns the body and head without a teleport, so movement in progress keeps
+     * its speed. The eyes never settle on a calm enderman's head.
+     */
     public static void face(Player player, float yaw, float pitch) {
         ServerPlayer handle = handle(player);
         handle.setYRot(yaw);
-        handle.setXRot(pitch);
+        handle.setXRot(Gaze.pitch(player, yaw, pitch));
         handle.setYHeadRot(yaw);
         handle.setYBodyRot(yaw);
     }

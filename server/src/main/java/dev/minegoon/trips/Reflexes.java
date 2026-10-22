@@ -15,7 +15,7 @@ import java.util.function.BooleanSupplier;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.entity.Enemy;
+import org.bukkit.entity.Creeper;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
@@ -25,8 +25,8 @@ import org.bukkit.inventory.PlayerInventory;
 /**
  * What the helper does on its own every tick, whatever job it is on: empty a
  * water bucket under itself before a fall lands, get out of lava or off a
- * magma block, come up for air before it runs out, eat when hungry, and hit
- * monsters that come close. Eating uses the off hand so the tool in the main
+ * magma block, come up for air before it runs out, get clear of a hissing
+ * creeper, eat when hungry, and hit monsters that come close. Eating uses the off hand so the tool in the main
  * hand stays put. Eating and hitting wait while a real fight has the body;
  * falls, burns and breathing do not. Main thread only.
  */
@@ -45,8 +45,13 @@ public final class Reflexes {
     private static final int DRESS_EVERY = 20;
     private static final int[][] AROUND = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 
+    /** How far a hissing creeper is noticed, and how close is too close to outrun its blast. */
+    private static final double BLAST_RANGE = 7;
+    private static final double BLAST_CLOSE = 3.5;
+
     private final Helper helper;
     private final BooleanSupplier fighting;
+    private boolean dodging;
     private Pos poured;
     /** Came up short of air, and stays up until it has its breath back. */
     private boolean winded;
@@ -76,8 +81,46 @@ public final class Reflexes {
         if (clutch(player) || fighting.getAsBoolean()) {
             return;
         }
+        if (blast(player)) {
+            return;
+        }
         eat(player, EAT_BELOW);
         fight(player);
+    }
+
+    /**
+     * A hissing creeper close by while no fight has the body, as while mining:
+     * shield up facing it when it is too close to outrun, otherwise turn and
+     * sprint until it gives up. True while it has the body.
+     */
+    private boolean blast(Player player) {
+        Creeper creeper = player.getNearbyEntities(BLAST_RANGE, BLAST_RANGE, BLAST_RANGE).stream()
+            .filter(entity -> entity instanceof Creeper lit && lit.getFuseTicks() > 0 && !lit.isDead())
+            .map(Creeper.class::cast)
+            .filter(player::hasLineOfSight)
+            .min(Comparator.comparingDouble(lit -> lit.getLocation().distanceSquared(player.getLocation())))
+            .orElse(null);
+        if (creeper == null) {
+            if (dodging) {
+                dodging = false;
+                Fighter.lowerShield(player);
+            }
+            return false;
+        }
+        dodging = true;
+        double distance = creeper.getLocation().distance(player.getLocation());
+        if (distance < BLAST_CLOSE) {
+            Look.at(player, creeper.getLocation().add(0, 0.9, 0));
+            if (Fighter.raiseShield(player)) {
+                helper.override(new Controls(-1, 0, false, false));
+                return true;
+            }
+        }
+        Fighter.lowerShield(player);
+        Location at = player.getLocation();
+        Look.toward(player, 2 * at.getX() - creeper.getLocation().getX(), 2 * at.getZ() - creeper.getLocation().getZ());
+        helper.override(new Controls(1, 0, FakePlayer.bumped(player) && FakePlayer.grounded(player), true));
+        return true;
     }
 
     /** Starts a bite when the food bar is under {@code below}. False when there is nothing to eat. */
@@ -188,12 +231,12 @@ public final class Reflexes {
             return;
         }
         player.getNearbyEntities(FIGHT_RANGE, FIGHT_RANGE, FIGHT_RANGE).stream()
-            .filter(entity -> entity instanceof Enemy && entity instanceof LivingEntity && !entity.isDead())
+            .filter(entity -> entity instanceof LivingEntity && Bestiary.hostileTo(player, entity))
             .map(LivingEntity.class::cast)
             .filter(player::hasLineOfSight)
             .min(Comparator.comparingDouble(enemy -> enemy.getLocation().distanceSquared(player.getLocation())))
             .ifPresent(enemy -> {
-                Look.at(player, enemy.getEyeLocation());
+                Look.at(player, enemy.getBoundingBox().getCenter().toLocation(player.getWorld()));
                 player.attack(enemy);
                 player.swingMainHand();
             });

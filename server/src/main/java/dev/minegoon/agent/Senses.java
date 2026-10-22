@@ -4,6 +4,7 @@ import dev.minegoon.ItemSet;
 import dev.minegoon.MainThread;
 import dev.minegoon.actions.Receipt;
 import dev.minegoon.spawn.Helper;
+import dev.minegoon.trips.Bestiary;
 import dev.minegoon.trips.Prospector;
 import dev.minegoon.trips.Sleeper;
 import dev.minegoon.world.Pos;
@@ -33,6 +34,7 @@ public final class Senses {
     private static final int CREATURES = 48;
     private static final int BLOCKS = 16;
     private static final int BIOMES = 8;
+    private static final double NEARBY = 24;
 
     private final MainThread main;
     private final Helper helper;
@@ -58,8 +60,9 @@ public final class Senses {
         return main.call(() -> {
             Player player = helper.player();
             Location at = player.getLocation();
-            return "at %d %d %d in %s, health %.0f/20, food %d/20, %s".formatted(at.getBlockX(), at.getBlockY(),
-                at.getBlockZ(), biome, player.getHealth(), player.getFoodLevel(), night ? "night" : "day");
+            return "at %d %d %d in %s, health %.0f/20, food %d/20, %s, %s".formatted(at.getBlockX(), at.getBlockY(),
+                at.getBlockZ(), biome, player.getHealth(), player.getFoodLevel(), night ? "night" : "day",
+                Bestiary.nearby(player, NEARBY));
         });
     }
 

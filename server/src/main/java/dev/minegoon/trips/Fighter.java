@@ -1,8 +1,10 @@
 package dev.minegoon.trips;
 
 import dev.minegoon.actions.Body;
+import dev.minegoon.actions.Checkpoint;
 import dev.minegoon.actions.Hands;
 import dev.minegoon.actions.Mover;
+import dev.minegoon.actions.Placer;
 import dev.minegoon.spawn.FakePlayer;
 import dev.minegoon.spawn.FakePlayer.Controls;
 import dev.minegoon.world.Blocks;
@@ -20,8 +22,6 @@ import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.Creeper;
-import org.bukkit.entity.Enderman;
-import org.bukkit.entity.Enemy;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.LivingEntity;
@@ -42,8 +42,10 @@ import org.bukkit.util.Vector;
  *     straight after (a w-tap), so every grounded hit pushes.</li>
  * <li>While its sword recharges it strafes sideways inside 2.2 to 2.8 blocks.</li>
  * <li>The shield goes up against a drawn bow and between swings up close.</li>
- * <li>A creeper that starts to hiss gets knocked back or walked away from.</li>
+ * <li>A creeper is hit once and backed away from, so it never swells in reach.
+ *     One that hisses is outrun, or met with the shield up when too close.</li>
  * <li>A monster that a ledge or wall keeps out of reach is walked round to.</li>
+ * <li>Calm endermen and neutral mobs are never started on; see {@link Bestiary}.</li>
  * </ul>
  * Timings follow https://minecraft.wiki/w/Melee_attack and /w/Shield.
  */
@@ -73,6 +75,18 @@ public final class Fighter {
     /** Walks round to a monster the fight cannot reach straight on, before letting it go. */
     private static final int APPROACHES = 3;
     private static final double APPROACH_RANGE = 2;
+    /** How far round the helper a group is counted before a fight. */
+    private static final double GROUP = 16;
+    /** How far a getaway goes, and how far every pursuer must be before it stops. */
+    private static final int RUN = 24;
+    private static final double CLEAR = 14;
+    private static final int PILLAR = 2;
+    private static final int HOLD_TICKS = 20 * 60;
+    private static final int QUIET_TICKS = 20 * 3;
+    /** Inside this, a hissing creeper cannot be outrun before it blows, so the shield faces it instead. */
+    private static final double BLAST_CLOSE = 3.5;
+    /** Ticks a creeper is backed away from after each hit, so it never gets a swell going in reach. */
+    private static final int CREEPER_BACKOFF = 12;
     private static final List<Material> WEAPONS = List.of(
         Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.IRON_SWORD, Material.STONE_SWORD,
         Material.GOLDEN_SWORD, Material.WOODEN_SWORD, Material.NETHERITE_AXE, Material.DIAMOND_AXE,
@@ -97,17 +111,165 @@ public final class Fighter {
         return engaged;
     }
 
-    /** Fights whatever hostile is coming for the helper, one at a time, until none is. Worker thread. */
+    /**
+     * Fights whatever hostile is coming for the helper, most urgent first, until
+     * none is. Before each fight it weighs the whole group against itself, and
+     * a group it would not beat with a third of its health to spare is not
+     * fought: against melee mobs that cannot climb it stands on a two-block
+     * pillar and hits down at them; against anything else it gets away.
+     * Worker thread.
+     */
     public void defend() {
         for (int fights = 0; fights < MAX_FIGHTS; fights++) {
-            Optional<UUID> threat = body.main().call(this::threat);
-            if (threat.isEmpty()) {
+            Odds odds = body.main().call(this::sizeUp);
+            if (odds == null) {
                 return;
             }
-            Tally tally = fight(threat.get());
+            if (!odds.wins()) {
+                escape(odds);
+                return;
+            }
+            Tally tally = fight(odds.first());
             if (tally.died() || tally.fled() || !tally.won() && tally.hits() == 0) {
                 return;
             }
+        }
+    }
+
+    /** The group after the helper, most urgent first, and whether fighting all of it is a win. */
+    private record Odds(List<UUID> foes, boolean wins, boolean pillar, Vector away, String names) {
+        UUID first() {
+            return foes.getFirst();
+        }
+    }
+
+    /** Null when nothing is after the helper. Main thread. */
+    private Odds sizeUp() {
+        Player self = body.helper().player();
+        if (self == null || self.isDead()) {
+            return null;
+        }
+        Location at = self.getLocation();
+        List<LivingEntity> foes = self.getNearbyEntities(GROUP, GROUP / 2, GROUP).stream()
+            .filter(entity -> entity instanceof LivingEntity living && !living.isDead())
+            .map(LivingEntity.class::cast)
+            .filter(foe -> Bestiary.hostileTo(self, foe)
+                && (huntingMe(self, foe) || foe.getLocation().distance(at) <= CLOSE))
+            .filter(self::hasLineOfSight)
+            .toList();
+        if (foes.isEmpty()) {
+            return null;
+        }
+        List<LivingEntity> ordered = Bestiary.order(self, foes);
+        boolean shield = self.getInventory().contains(Material.SHIELD)
+            || self.getInventory().getItemInOffHand().getType() == Material.SHIELD;
+        boolean wins = Bestiary.wins(Bestiary.strength(self),
+            ordered.stream().map(Bestiary.Foe::of).toList(), shield);
+        boolean pillar = Placer.throwaways(self) >= 2 && !self.isInWater() && ordered.stream().noneMatch(foe -> {
+            Bestiary.Kind kind = Bestiary.of(foe);
+            return kind.climbs() || kind.tactic() != Bestiary.Tactic.MELEE;
+        });
+        Vector away = new Vector();
+        for (LivingEntity foe : ordered) {
+            away.add(at.toVector().subtract(foe.getLocation().toVector()).setY(0).normalize());
+        }
+        String names = ordered.stream().map(foe -> foe.getType().getKey().value()).distinct()
+            .reduce((a, b) -> a + ", " + b).orElse("");
+        return new Odds(ordered.stream().map(Entity::getUniqueId).toList(), wins, pillar, away, names);
+    }
+
+    /**
+     * Too much to fight. A pillar two blocks up keeps zombies and the like
+     * from reaching, and it hits them from there; otherwise it walks away
+     * from the group until none is close. Worker thread.
+     */
+    private void escape(Odds odds) {
+        body.helper().say("Too much for me here (" + odds.names() + "), so I'll "
+            + (odds.pillar() ? "get up out of reach." : "back off."));
+        if (odds.pillar() && pillarUp()) {
+            holdHigh();
+            return;
+        }
+        Pos feet = mover.feet();
+        Vector away = odds.away().lengthSquared() < 1e-6 ? new Vector(1, 0, 0) : odds.away().normalize();
+        int dirX = (int) Math.round(away.getX());
+        int dirZ = (int) Math.round(away.getZ());
+        if (dirX == 0 && dirZ == 0) {
+            dirX = 1;
+        }
+        try {
+            mover.walk(Goal.away(feet, dirX, dirZ, RUN), () -> {
+                if (body.main().call(this::clear)) {
+                    throw new Close();
+                }
+            });
+        } catch (Close clear) {
+            // Far enough from all of them.
+        }
+    }
+
+    /** Nothing after the helper within {@link #CLEAR} blocks. Main thread. */
+    private boolean clear() {
+        Player self = body.helper().player();
+        return self == null || self.getNearbyEntities(CLEAR, CLEAR / 2, CLEAR).stream()
+            .noneMatch(entity -> Bestiary.hostileTo(self, entity) && huntingMe(self, entity));
+    }
+
+    private boolean pillarUp() {
+        Pos feet = mover.feet();
+        return mover.walk(Goal.near(feet.offset(0, PILLAR, 0), 0.5), Checkpoint.NONE);
+    }
+
+    /**
+     * On a pillar: stands still with sneak held so it never steps off, hits
+     * whatever comes within reach below, and keeps the shield up between
+     * swings. Done when nothing has been after it for a few seconds.
+     */
+    private void holdHigh() {
+        engaged = true;
+        try {
+            int quiet = 0;
+            for (int tick = 0; tick < HOLD_TICKS && quiet < QUIET_TICKS; tick++) {
+                boolean busy = body.main().tick(() -> {
+                    Player self = body.helper().player();
+                    if (self == null || self.isDead()) {
+                        return false;
+                    }
+                    arm(self);
+                    body.helper().drive(new Controls(0, 0, false, false, true));
+                    Optional<LivingEntity> near = self.getNearbyEntities(REACH + 1, REACH + 2, REACH + 1).stream()
+                        .filter(entity -> entity instanceof LivingEntity living && !living.isDead()
+                            && Bestiary.hostileTo(self, entity))
+                        .map(LivingEntity.class::cast)
+                        .filter(foe -> reach(self, foe) <= REACH && self.hasLineOfSight(foe))
+                        .min(Comparator.comparingDouble(foe -> reach(self, foe)));
+                    if (near.isPresent()) {
+                        LivingEntity foe = near.get();
+                        Location eye = self.getEyeLocation();
+                        Vector to = foe.getBoundingBox().getCenter().subtract(eye.toVector());
+                        FakePlayer.face(self, (float) Math.toDegrees(Math.atan2(-to.getX(), to.getZ())),
+                            (float) -Math.toDegrees(Math.atan2(to.getY(), Math.hypot(to.getX(), to.getZ()))));
+                        if (self.getAttackCooldown() >= READY) {
+                            lowerShield(self);
+                            self.attack(foe);
+                            self.swingMainHand();
+                        } else if (self.getInventory().getItemInOffHand().getType() == Material.SHIELD
+                            && !self.isHandRaised()) {
+                            self.startUsingItem(EquipmentSlot.OFF_HAND);
+                        }
+                    }
+                    return !clear();
+                });
+                quiet = busy ? 0 : quiet + 1;
+            }
+        } finally {
+            body.main().run(() -> {
+                Player self = body.helper().player();
+                if (self != null) {
+                    lowerShield(self);
+                }
+            });
+            engaged = false;
         }
     }
 
@@ -163,22 +325,6 @@ public final class Fighter {
     /** What a fight does after a tick: carry on, walk round to the monster, or stop. */
     private enum Beat { ON, CLOSE_IN, OVER }
 
-    /** The nearest hostile in sight that is after the helper, or too close to ignore. Main thread. */
-    private Optional<UUID> threat() {
-        Player self = body.helper().player();
-        if (self == null || self.isDead()) {
-            return Optional.empty();
-        }
-        Location at = self.getLocation();
-        return self.getNearbyEntities(ENGAGE, ENGAGE / 2, ENGAGE).stream()
-            .filter(entity -> entity instanceof Enemy && entity instanceof LivingEntity living && !living.isDead())
-            .filter(entity -> !(entity instanceof Enderman enderman) || self.equals(enderman.getTarget()))
-            .filter(entity -> huntingMe(self, entity) || entity.getLocation().distance(at) <= CLOSE)
-            .filter(entity -> self.hasLineOfSight(entity))
-            .min(Comparator.comparingDouble(entity -> entity.getLocation().distanceSquared(at)))
-            .map(Entity::getUniqueId);
-    }
-
     private static boolean huntingMe(Player self, Entity entity) {
         return entity instanceof Mob mob && mob.getTarget() != null
             && mob.getTarget().getUniqueId().equals(self.getUniqueId());
@@ -202,6 +348,7 @@ public final class Fighter {
         private int sinceCloser;
         private int strafe = ThreadLocalRandom.current().nextBoolean() ? 1 : -1;
         private int strafeLeft = strafeTime();
+        private int backoff;
         private boolean won;
         private boolean died;
         private boolean fled;
@@ -250,14 +397,27 @@ public final class Fighter {
             if (shoot(self, enemy, reach)) {
                 return Beat.ON;
             }
-            if (enemy instanceof Creeper creeper && creeper.getFuseTicks() > 0 && !(inReach && ready)) {
-                lowerShield(self);
-                body.helper().drive(steer(self, new Controls(-1, strafe, false, false)));
-                return Beat.ON;
+            if (enemy instanceof Creeper creeper) {
+                if (creeper.getFuseTicks() > 0) {
+                    if (reach < BLAST_CLOSE && raiseShield(self)) {
+                        body.helper().drive(steer(self, new Controls(-1, 0, false, false)));
+                        return Beat.ON;
+                    }
+                    return flee(self, enemy) ? Beat.ON : Beat.OVER;
+                }
+                if (backoff > 0) {
+                    backoff--;
+                    lowerShield(self);
+                    body.helper().drive(steer(self, new Controls(-1, strafe, false, false)));
+                    return Beat.ON;
+                }
             }
             weapon(self, enemy);
             if (inReach && ready) {
                 hit(self, enemy, !(enemy instanceof Creeper) && FakePlayer.falling(self));
+                if (enemy instanceof Creeper) {
+                    backoff = CREEPER_BACKOFF;
+                }
             }
             guard(self, enemy, reach, ready);
             body.helper().drive(steer(self, move(self, enemy, reach, ready)));
@@ -483,7 +643,19 @@ public final class Fighter {
         }
     }
 
-    private static void lowerShield(Player self) {
+    /** Shield up in the off hand, toward wherever the eyes face. False when there is no shield. */
+    static boolean raiseShield(Player self) {
+        arm(self);
+        if (self.getInventory().getItemInOffHand().getType() != Material.SHIELD) {
+            return false;
+        }
+        if (!self.isHandRaised()) {
+            self.startUsingItem(EquipmentSlot.OFF_HAND);
+        }
+        return true;
+    }
+
+    static void lowerShield(Player self) {
         if (self.isHandRaised()) {
             self.clearActiveItem();
         }
