@@ -4,6 +4,7 @@ import dev.minegoon.ItemSet;
 import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -88,9 +89,17 @@ public final class Hands {
         hold(player, bestSlot);
     }
 
+    /**
+     * A sword is a weapon: it loses two points a block and is what the helper
+     * fights with, so it only cuts cobwebs. Paper calls any tool preferred on a
+     * block that needs none, like leaves or dirt, so wear is judged by speed.
+     */
     private static double breakCost(BlockData block, ItemStack stack) {
         ItemStack tool = stack == null ? ItemStack.empty() : stack;
-        boolean wears = tool.getType().getMaxDurability() > 0 && !block.isPreferredTool(tool);
+        if (Tag.ITEMS_SWORDS.isTagged(tool.getType()) && block.getMaterial() != Material.COBWEB) {
+            return Double.MAX_VALUE;
+        }
+        boolean wears = tool.getType().getMaxDurability() > 0 && block.getDestroySpeed(tool, false) <= 1;
         return Digging.ticks(block, tool) + (wears ? WEAR : 0);
     }
 
