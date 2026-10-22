@@ -19,6 +19,10 @@ import org.bukkit.inventory.ItemStack;
 public final class Digging implements Clearance {
 
     private static final ItemStack BARE_HAND = ItemStack.empty();
+    /** Blocks at least this hard are rock: a route goes round them through open caves when it can. */
+    private static final float ROCK = 1;
+    /** About ten blocks of sprinting, so a walk only digs rock where going round is much longer. */
+    private static final double ROCK_DETOUR = 36;
 
     private final List<ItemStack> tools;
     private final BreakPolicy policy;
@@ -48,7 +52,7 @@ public final class Digging implements Clearance {
             for (ItemStack tool : tools) {
                 best = Math.min(best, ticks(data, tool));
             }
-            return best;
+            return data.getMaterial().getHardness() >= ROCK ? best * 2 + ROCK_DETOUR : best;
         });
     }
 

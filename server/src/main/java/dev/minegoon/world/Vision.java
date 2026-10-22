@@ -49,6 +49,8 @@ public final class Vision {
     private static final long DARK_SIGHT = 16 * 16;
     private static final int CLIFF = 5;
     private static final int CAVE_DEPTH = 40;
+    private static final int SHAFT_WALL = 6;
+    private static final int[][] AROUND = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
     private final MainThread main;
     private final Supplier<Player> player;
@@ -336,6 +338,46 @@ public final class Vision {
         Pos feet = feet();
         return floors(feet.y() - CAVE_DEPTH, below,
             pos -> (feet.y() - pos.y()) - 0.25 * Math.sqrt(pos.distanceSquared(feet)), limit);
+    }
+
+    /**
+     * The bottoms of ravines, pits, and sinkholes in sight: open to the sky, at
+     * {@code below} or lower, with a wall at least {@link #SHAFT_WALL} blocks
+     * high beside them. Those are where big caves break the surface, so the
+     * deepest come first. Water is not a way down.
+     */
+    public List<Pos> shafts(int below, int limit) {
+        WorldView view = around();
+        Pos feet = feet();
+        List<Scored> found = new ArrayList<>();
+        long reach = (long) radius * radius;
+        for (int x = feet.x() - radius; x <= feet.x() + radius; x += 2) {
+            for (int z = feet.z() - radius; z <= feet.z() + radius; z += 2) {
+                long dx = x - feet.x();
+                long dz = z - feet.z();
+                if (dx * dx + dz * dz > reach || !view.covers(x, z)) {
+                    continue;
+                }
+                int top = view.highest(x, z);
+                if (top + 1 > below || !Blocks.ground(view.type(x, top, z))
+                    || !Blocks.passable(view.type(x, top + 1, z)) || Blocks.water(view.type(x, top + 1, z))) {
+                    continue;
+                }
+                int wall = 0;
+                for (int[] d : AROUND) {
+                    int nx = x + d[0] * 3;
+                    int nz = z + d[1] * 3;
+                    if (view.covers(nx, nz)) {
+                        wall = Math.max(wall, view.highest(nx, nz) - top);
+                    }
+                }
+                if (wall >= SHAFT_WALL) {
+                    Pos pos = new Pos(x, top + 1, z);
+                    found.add(new Scored(pos, (feet.y() - pos.y()) - 0.1 * Math.sqrt(dx * dx + dz * dz)));
+                }
+            }
+        }
+        return inSight(view, found, limit);
     }
 
     /**

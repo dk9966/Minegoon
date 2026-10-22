@@ -51,6 +51,8 @@ public final class Prospector {
     private static final int TUNNEL = 16;
     private static final int TUNNELS_PER_PASS = 4;
     private static final int TARGETS = 8;
+    /** How far below the feet the bottom of a ravine or pit must be to count as a way down. */
+    private static final int SHAFT_DEPTH = 10;
     private static final int DRY_PASSES = 2;
     /** The knowledge entry for ground a seed can be planted in. */
     public static final String SOIL = "soil";
@@ -248,12 +250,17 @@ public final class Prospector {
             return walkToFirst(sightings.stream().map(Structures.Sighting::at).toList(), checkpoint);
         }
 
+        /** A player asked for digging. Otherwise every way down is a walk through open ground. */
+        private boolean digging() {
+            return find.ways().contains(Way.DIG) && tunneler.armed();
+        }
+
         /**
-         * Still well above the best height after the listed moves. Another
-         * staircase, not a side tunnel: the ore is not up here.
+         * Still well above the best height after the listed moves, and a player
+         * asked for digging. Another staircase, not a side tunnel.
          */
         private boolean descend(Checkpoint checkpoint) {
-            if (find.best() == null || !tunneler.armed()) {
+            if (find.best() == null || !digging()) {
                 return false;
             }
             Pos feet = mover.feet();
@@ -264,29 +271,30 @@ public final class Prospector {
         }
 
         /**
-         * Down into a cave in sight that is actually deeper, but not below where
-         * the thing stops showing up. A shallow mouth does not count: with no
-         * deep opening, stairs go toward the best height instead of wandering
-         * the surface. Far below the best height, stairs go back up to it.
-         * That is a staircase, not a strip mine.
+         * Down the deepest way in sight that is open ground: a cave floor, or
+         * the bottom of a ravine or pit, but not below where the thing stops
+         * showing up. Big caves reach the surface through ravines and wide
+         * mouths, so those come first. Nothing is dug unless a player asked for
+         * digging; with no way down in sight the search moves on to new ground.
          */
         private boolean cave(Checkpoint checkpoint) {
             Pos feet = mover.feet();
-            if (find.best() != null && feet.y() < find.best() - CAVERN_ABOVE && tunneler.armed()
+            if (find.best() != null && feet.y() < find.best() - CAVERN_ABOVE && digging()
                     && tunneler.up(Math.min(find.best(), feet.y() + STAIRS), STAIRS, checkpoint)) {
                 return true;
             }
             if (find.best() != null && feet.y() <= find.best() + 2) {
                 return false;
             }
-            List<Pos> openings = vision.caves(feet.y() - 3, TARGETS).stream()
-                .filter(pos -> pos.y() >= find.low())
-                .toList();
-            List<Pos> deeper = openings.stream().filter(pos -> pos.y() <= feet.y() - 8).toList();
+            List<Pos> openings = new ArrayList<>(vision.shafts(feet.y() - SHAFT_DEPTH, TARGETS));
+            openings.addAll(vision.caves(feet.y() - 3, TARGETS));
+            openings.removeIf(pos -> pos.y() < find.low());
+            openings.sort((a, b) -> Integer.compare(a.y(), b.y()));
+            List<Pos> deeper = openings.stream().filter(pos -> pos.y() <= feet.y() - 4).toList();
             if (walkToFirst(deeper, checkpoint)) {
                 return true;
             }
-            if (find.best() != null && feet.y() > find.best() + 8 && tunneler.armed()
+            if (find.best() != null && feet.y() > find.best() + 8 && digging()
                 && tunneler.down(Math.max(find.best(), feet.y() - STAIRS), STAIRS, checkpoint)) {
                 return true;
             }
@@ -323,7 +331,7 @@ public final class Prospector {
 
         /** Stairs down to the best height, then tunnels there. Not by hand. */
         private boolean dig(Checkpoint checkpoint) {
-            if (!tunneler.armed()) {
+            if (!digging()) {
                 return false;
             }
             int best = find.best() != null ? find.best() : mover.feet().y();
@@ -384,16 +392,18 @@ public final class Prospector {
 
     /**
      * Toward the compass direction with the most ground not yet looked at,
-     * keeping the last heading when it is as good. Underground with a pickaxe, a
-     * tunnel. When no walk gets anywhere, stairs up to the surface, then a tunnel
-     * that way: rock is never a dead end. Not {@link Dry}: the thing may be out
-     * there, the helper just cannot move, and nobody's advice changes that.
+     * keeping the last heading when it is as good. Underground that is a walk
+     * along the cave; a tunnel only when a player asked for digging. When no
+     * walk gets anywhere, out to the surface, by stairs only if nothing else
+     * works: being shut in is never a reason to stay. Not {@link Dry}: the thing
+     * may be out there, the helper just cannot move, and nobody's advice changes that.
      */
     private void frontier(Checkpoint checkpoint) {
         Pos feet = mover.feet();
         int surface = surface(feet);
         boolean buried = surface - feet.y() > BURIED;
-        if (buried && tunneler.armed()) {
+        boolean digging = orders.ways().contains(Way.DIG) && tunneler.armed();
+        if (buried && digging) {
             tunneler.turn();
             if (tunneler.ahead(FRONTIER, checkpoint)) {
                 return;
@@ -414,11 +424,11 @@ public final class Prospector {
                 return;
             }
         }
-        if (buried && tunneler.up(surface, surface - feet.y(), checkpoint)) {
+        if (buried && tunneler.armed() && tunneler.up(surface, surface - feet.y(), checkpoint)) {
             remember();
             return;
         }
-        for (int direction : order) {
+        for (int direction : digging ? order : List.<Integer>of()) {
             int[] step = COMPASS[direction];
             if (tunneler.toward(step[0], step[1], FRONTIER, checkpoint)) {
                 heading = direction;
