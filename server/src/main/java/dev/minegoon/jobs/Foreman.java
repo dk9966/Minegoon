@@ -537,16 +537,8 @@ public final class Foreman {
         }
         sheltered = true;
         crew.retreat().nightCovered();
-        if (hasWeapon()) {
-            List<Job> skipped = surfacePackingBeforeCaves(task);
-            if (skipped != null) {
-                skipped.forEach(board::complete);
-                say(skipped.isEmpty()
-                    ? "It's night up here, and the next thing I need is down in the caves, so I'll head down now."
-                    : "It's night up here. I have some food, and the rest of the job is down in the caves, so I'll"
-                        + " stop packing and head down now instead of waiting out the night.");
-                return !skipped.isEmpty();
-            }
+        if (hasWeapon() && headDown(task)) {
+            return true;
         }
         if (crew.sleeper().hasBed()) {
             say("It's night up here. I'll sleep and pick this up in the morning.");
@@ -567,30 +559,55 @@ public final class Foreman {
     }
 
     /**
-     * The food hunts packed for the trip that stand between now and the first
-     * job in the caves, when some food is already held: caves are as dark by
-     * day, so waiting out the night up top only costs time. Null when the next
-     * real job is not underground or there is nothing to eat yet.
+     * Night with a weapon and some food: caves are as dark by day, so waiting
+     * out the night up top only costs time when the rest of the job is below.
+     * Drops the food hunts still packed, keeps the rest of the packing, like
+     * logs, which is quick, and plans the goal again from what is held. True
+     * when the next goal job is then in the caves.
      */
-    private List<Job> surfacePackingBeforeCaves(Task task) {
-        boolean fed = body.main().call(this::inventory).keySet().stream().anyMatch(Material::isEdible);
-        List<Job> skipped = new ArrayList<>();
-        for (Job job : board.jobs(task.id())) {
-            if (job.status() != Job.Status.OPEN && job.status() != Job.Status.ACTIVE) {
-                continue;
-            }
-            boolean food = switch (job.step()) {
-                case Step.Hunt hunt -> hunt.item().members().stream().allMatch(Material::isEdible);
-                case Step.Smelt smelt -> smelt.output().members().stream().allMatch(Material::isEdible);
-                default -> false;
-            };
-            if (fed && packingJobs.contains(job.id()) && food) {
-                skipped.add(job);
-                continue;
-            }
-            return crew.prospector().underground(job.step()) ? skipped : null;
+    private boolean headDown(Task task) {
+        if (body.main().call(this::inventory).keySet().stream().noneMatch(Material::isEdible)) {
+            return false;
         }
-        return null;
+        List<Job> hunts = unfinished(task.id()).stream()
+            .filter(job -> packingJobs.contains(job.id()) && job.step() instanceof Step.Hunt hunt
+                && hunt.item().members().stream().allMatch(Material::isEdible))
+            .toList();
+        List<Step> goal;
+        try {
+            goal = steps(task.id(), task.avoid());
+        } catch (Planner.Unplannable unplannable) {
+            return false;
+        }
+        Optional<Step> first = goal.stream().filter(Foreman::inTheWorld).findFirst();
+        if (first.isEmpty() || !crew.prospector().underground(first.get())) {
+            return false;
+        }
+        hunts.forEach(board::complete);
+        replanBehindPacking(task, goal);
+        say("It's night up here" + (hunts.isEmpty() ? ", and" : ". I have some food, and")
+            + " the rest of the job is down in the caves, so I'll head down now instead of waiting out the night.");
+        return true;
+    }
+
+    /**
+     * Puts {@code goal}, planned from what is held now, behind the packing still
+     * to do. Packing makes its own tools on the way, which the old plan would
+     * make again.
+     */
+    private void replanBehindPacking(Task task, List<Step> goal) {
+        List<Step> steps = new ArrayList<>();
+        List<Job> stillPacking = unfinished(task.id()).stream().filter(job -> packingJobs.contains(job.id())).toList();
+        stillPacking.forEach(job -> steps.add(job.step()));
+        steps.addAll(goal);
+        adopt(task.id(), task.avoid(), steps);
+        unfinished(task.id()).stream().limit(stillPacking.size()).forEach(job -> packingJobs.add(job.id()));
+    }
+
+    private List<Job> unfinished(long taskId) {
+        return board.jobs(taskId).stream()
+            .filter(job -> job.status() == Job.Status.OPEN || job.status() == Job.Status.ACTIVE)
+            .toList();
     }
 
     private boolean armored() {
@@ -842,6 +859,14 @@ public final class Foreman {
             }
             case Step.Recover recover -> replan(task.id(), task.avoid());
             default -> {
+                if (packingJobs.remove(job.id())
+                    && unfinished(task.id()).stream().noneMatch(other -> packingJobs.contains(other.id()))) {
+                    try {
+                        replanBehindPacking(task, steps(task.id(), task.avoid()));
+                    } catch (Planner.Unplannable unplannable) {
+                        log.fine(() -> "keeping the old plan after packing: " + unplannable.getMessage());
+                    }
+                }
             }
         }
     }
