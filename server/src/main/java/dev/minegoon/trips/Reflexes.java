@@ -48,6 +48,12 @@ public final class Reflexes {
     /** How far a hissing creeper is noticed, and how close is too close to outrun its blast. */
     private static final double BLAST_RANGE = 7;
     private static final double BLAST_CLOSE = 3.5;
+    /**
+     * A creeper after the helper starts its fuse within three blocks, and a
+     * player with no shield cannot outrun one lit that close. It is backed away
+     * from a little before that.
+     */
+    private static final double SWELLS_AT = 4.5;
 
     private final Helper helper;
     private final BooleanSupplier fighting;
@@ -88,14 +94,21 @@ public final class Reflexes {
         fight(player);
     }
 
+    private static boolean stalking(Player player, Creeper creeper) {
+        return creeper.getTarget() != null && creeper.getTarget().getUniqueId().equals(player.getUniqueId());
+    }
+
     /**
-     * A hissing creeper close by while no fight has the body, as while mining:
-     * shield up facing it when it is too close to outrun, otherwise turn and
-     * sprint until it gives up. True while it has the body.
+     * A hissing creeper close by while no fight has the body, as while mining,
+     * or one after the helper about to come into fuse range: shield up facing
+     * it when it is too close to outrun, otherwise turn and sprint until it
+     * gives up. True while it has the body.
      */
     private boolean blast(Player player) {
+        Location feet = player.getLocation();
         Creeper creeper = player.getNearbyEntities(BLAST_RANGE, BLAST_RANGE, BLAST_RANGE).stream()
-            .filter(entity -> entity instanceof Creeper lit && lit.getFuseTicks() > 0 && !lit.isDead())
+            .filter(entity -> entity instanceof Creeper lit && !lit.isDead() && (lit.getFuseTicks() > 0
+                || stalking(player, lit) && lit.getLocation().distance(feet) < SWELLS_AT))
             .map(Creeper.class::cast)
             .filter(player::hasLineOfSight)
             .min(Comparator.comparingDouble(lit -> lit.getLocation().distanceSquared(player.getLocation())))

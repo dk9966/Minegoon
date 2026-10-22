@@ -179,6 +179,11 @@ public final class Fighter {
         for (LivingEntity foe : ordered) {
             away.add(at.toVector().subtract(foe.getLocation().toVector()).setY(0).normalize());
         }
+        // A getaway must not run into a creeper the group left out, unseen or not yet after the helper.
+        self.getNearbyEntities(GROUP, GROUP / 2, GROUP).stream()
+            .filter(entity -> entity instanceof Creeper creeper && !creeper.isDead() && !ordered.contains(creeper))
+            .forEach(creeper -> away.add(at.toVector().subtract(creeper.getLocation().toVector()).setY(0)
+                .normalize().multiply(2)));
         String names = ordered.stream().map(foe -> foe.getType().getKey().value()).distinct()
             .reduce((a, b) -> a + ", " + b).orElse("");
         return new Odds(ordered.stream().map(Entity::getUniqueId).toList(), wins, pillar, away, names);
