@@ -2,7 +2,6 @@ package dev.minegoon.actions;
 
 import dev.minegoon.ItemSet;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
@@ -69,21 +68,18 @@ public final class Hands {
     }
 
     /**
-     * Puts whatever breaks this block fastest into the main hand. Iron and
-     * better tools are spared when a cheaper tool also suits the block, so an
-     * iron pickaxe lasts to the diamonds instead of wearing out on the stairs down.
-     * A tool that would only wear out on the block, like a sword on dirt, counts
-     * as a little slower than a bare hand.
+     * Puts whatever breaks this block fastest into the main hand: the best tool
+     * held is the one used, since time matters more than wear. A tool that would
+     * only wear out on the block, like a sword on dirt, counts as a little slower
+     * than a bare hand.
      */
     public static void holdFastestFor(Player player, BlockData block) {
         PlayerInventory inventory = player.getInventory();
         ItemStack[] storage = inventory.getStorageContents();
-        boolean spare = Arrays.stream(storage)
-            .anyMatch(stack -> stack != null && !precious(stack) && block.isPreferredTool(stack));
         int bestSlot = inventory.getHeldItemSlot();
-        double best = breakCost(block, storage[bestSlot], spare);
+        double best = breakCost(block, storage[bestSlot]);
         for (int slot = 0; slot < storage.length; slot++) {
-            double cost = breakCost(block, storage[slot], spare);
+            double cost = breakCost(block, storage[slot]);
             if (cost < best) {
                 bestSlot = slot;
                 best = cost;
@@ -92,42 +88,10 @@ public final class Hands {
         hold(player, bestSlot);
     }
 
-    private static double breakCost(BlockData block, ItemStack stack, boolean spare) {
+    private static double breakCost(BlockData block, ItemStack stack) {
         ItemStack tool = stack == null ? ItemStack.empty() : stack;
-        if (spare && precious(tool)) {
-            return Double.MAX_VALUE;
-        }
         boolean wears = tool.getType().getMaxDurability() > 0 && !block.isPreferredTool(tool);
         return Digging.ticks(block, tool) + (wears ? WEAR : 0);
-    }
-
-    private static boolean precious(ItemStack stack) {
-        String name = stack.getType().name();
-        return name.startsWith("IRON_") || name.startsWith("GOLDEN_") || name.startsWith("DIAMOND_")
-            || name.startsWith("NETHERITE_");
-    }
-
-    /** Wooden or stone pickaxes still in the inventory. The iron one is kept for ore. */
-    public static int cheapPicks(Player player) {
-        int count = 0;
-        for (ItemStack stack : player.getInventory().getStorageContents()) {
-            if (stack != null && (stack.getType() == Material.WOODEN_PICKAXE
-                    || stack.getType() == Material.STONE_PICKAXE)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    /**
-     * Stone pickaxes the cobble and sticks already held can make. Cobbled
-     * deepslate counts: it crafts the same tools cobblestone does.
-     */
-    public static int craftableStonePicks(Player player) {
-        int sticks = count(player, ItemSet.of(Material.STICK));
-        int cobble = count(player, ItemSet.of(Material.COBBLESTONE))
-            + count(player, ItemSet.of(Material.COBBLED_DEEPSLATE));
-        return Math.min(sticks / 2, cobble / 3);
     }
 
     /** Puts {@code material} in the main hand. Returns false when the helper has none. */

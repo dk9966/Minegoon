@@ -12,6 +12,7 @@ import dev.minegoon.models.Advisor;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.planner.Planner;
 import dev.minegoon.safety.Zones;
+import dev.minegoon.trips.Bestiary;
 import dev.minegoon.trips.Farmer;
 import dev.minegoon.trips.Fighter;
 import dev.minegoon.trips.Filler;
@@ -68,6 +69,27 @@ public final class Foreman {
     private static final int SETTLE_TICKS = 20;
     private static final long RECOVER_WINDOW_MS = 4 * 60_000;
     private static final int RESPAWN_WAIT_TICKS = 100;
+    /** Tools from best to worst. The diamond and netherite rungs are only ever held, never made here. */
+    private static final List<List<Material>> UPGRADES = List.of(
+        List.of(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.IRON_PICKAXE,
+            Material.COPPER_PICKAXE, Material.STONE_PICKAXE, Material.WOODEN_PICKAXE),
+        List.of(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.IRON_SWORD,
+            Material.COPPER_SWORD, Material.STONE_SWORD, Material.WOODEN_SWORD),
+        List.of(Material.SHIELD));
+    /** What each upgrade is made from that another job may also want. */
+    private static final Map<Material, Set<Material>> UPGRADE_FROM = Map.of(
+        Material.NETHERITE_PICKAXE, Set.of(Material.DIAMOND, Material.NETHERITE_INGOT),
+        Material.DIAMOND_PICKAXE, Set.of(Material.DIAMOND),
+        Material.IRON_PICKAXE, Set.of(Material.IRON_INGOT, Material.RAW_IRON),
+        Material.COPPER_PICKAXE, Set.of(Material.COPPER_INGOT, Material.RAW_COPPER),
+        Material.STONE_PICKAXE, Set.of(Material.COBBLESTONE, Material.COBBLED_DEEPSLATE),
+        Material.NETHERITE_SWORD, Set.of(Material.DIAMOND, Material.NETHERITE_INGOT),
+        Material.DIAMOND_SWORD, Set.of(Material.DIAMOND),
+        Material.IRON_SWORD, Set.of(Material.IRON_INGOT, Material.RAW_IRON),
+        Material.COPPER_SWORD, Set.of(Material.COPPER_INGOT, Material.RAW_COPPER),
+        Material.SHIELD, Set.of(Material.IRON_INGOT, Material.RAW_IRON));
+    private static final Set<Material> NEVER_MADE = Set.of(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE,
+        Material.NETHERITE_SWORD, Material.DIAMOND_SWORD);
 
     private final Body body;
     private final JobBoard board;
@@ -81,6 +103,7 @@ public final class Foreman {
     private final Database db;
     private final Logger log;
     private final Set<Long> supplied = new HashSet<>();
+    private final Set<Long> upgraded = new HashSet<>();
     private final Stall stall = new Stall();
     private Thread worker;
     private LongConsumer missionRunner = id -> {
@@ -407,7 +430,7 @@ public final class Foreman {
         bedding = false;
         sheltered = false;
         supplied.clear();
-        crew.retreat().craftingStonePicks(true);
+        upgraded.clear();
     }
 
     /**
@@ -436,7 +459,7 @@ public final class Foreman {
         if (job.step() instanceof Step.Recover) {
             return false;
         }
-        if (job.step() instanceof Step.Gather gather && restockStonePicks(task, gather)) {
+        if (upgrade(task, job)) {
             return true;
         }
         Material worn = wornTool(job);
@@ -507,49 +530,73 @@ public final class Foreman {
     }
 
     /**
-     * Stone pickaxes do the staircase and the tunnels. When they are gone and
-     * the cobble already held can make more, craft those before the iron pick
-     * is spent on deepslate. Gives up for this task when that craft would mean
-     * leaving to gather something.
+     * A better pickaxe, sword, or shield, when what is already held makes one
+     * without a trip: a faster tool finishes sooner and a better weapon ends
+     * fights sooner. Never from what the rest of the task still needs, and
+     * never from diamonds, which go to the goal. Once per job.
      */
-    private boolean restockStonePicks(Task task, Step.Gather gather) {
-        if (!crew.retreat().craftingStonePicks()) {
+    private boolean upgrade(Task task, Job job) {
+        if (!inTheWorld(job.step()) || !upgraded.add(job.id())) {
             return false;
         }
-        boolean picky = gather.blocks().stream()
-            .anyMatch(block -> block.createBlockData().requiresCorrectToolForDrops());
-        if (!picky) {
-            return false;
-        }
-        int make = body.main().call(() -> {
-            Player player = body.player();
-            if (player == null || Hands.cheapPicks(player) > 0) {
-                return 0;
+        Set<Material> needed = planItems(task.id());
+        needed.addAll(task.goalItems().members());
+        Map<Material, Integer> held = body.main().call(this::inventory);
+        List<Step> steps = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        for (List<Material> ladder : UPGRADES) {
+            int have = best(ladder, held);
+            for (int rung = 0; rung < have; rung++) {
+                Material better = ladder.get(rung);
+                if (NEVER_MADE.contains(better)
+                    || UPGRADE_FROM.getOrDefault(better, Set.of()).stream().anyMatch(needed::contains)) {
+                    continue;
+                }
+                List<Step> some = provision(ItemSet.of(better), 1);
+                if (some != null && some.stream().noneMatch(Foreman::inTheWorld)) {
+                    steps.addAll(some);
+                    names.add(ItemSet.key(better).replace('_', ' '));
+                    break;
+                }
             }
-            return Math.min(4, Hands.craftableStonePicks(player));
-        });
-        if (make < 1) {
+        }
+        if (steps.isEmpty()) {
             return false;
         }
-        List<Step> steps = provision(ItemSet.of(Material.STONE_PICKAXE), make);
-        if (steps == null || steps.stream().anyMatch(Foreman::inTheWorld)) {
-            crew.retreat().craftingStonePicks(false);
-            return false;
-        }
-        say("My stone pickaxes are used up. I'll make more from the cobble I have, and keep the iron one for the ore.");
+        say("I have what it takes for a " + String.join(" and a ", names) + ", so I'll make "
+            + (names.size() == 1 ? "it" : "them") + " first. Better gear finishes sooner.");
         board.addAllFront(task.id(), steps);
         return true;
     }
 
-    /** Once per job: food, blocks, and gear before a trip the knowledge says is dangerous. */
+    /** The rung of the best item held, counted from the top; the ladder's length when none is held. */
+    private static int best(List<Material> ladder, Map<Material, Integer> held) {
+        for (int rung = 0; rung < ladder.size(); rung++) {
+            if (held.getOrDefault(ladder.get(rung), 0) > 0) {
+                return rung;
+            }
+        }
+        return ladder.size();
+    }
+
+    /**
+     * Once per job: food, blocks, and gear before a trip the knowledge says is
+     * dangerous, as much as a trip after that many of the thing takes, so it
+     * does not have to come back up for more halfway.
+     */
     private boolean supply(Task task, Job job) {
         if (!inTheWorld(job.step()) || !supplied.add(job.id())) {
             return false;
         }
         String subject = crew.prospector().subject(job.step());
+        int amount = switch (job.step()) {
+            case Step.Gather gather -> gather.count();
+            case Step.Hunt hunt -> hunt.count();
+            default -> 1;
+        };
         List<Step> steps = new ArrayList<>();
         List<String> names = new ArrayList<>();
-        for (Tutor.Shortfall shortfall : tutor.missingSupplies(subject, body.main().call(this::inventory))) {
+        for (Tutor.Shortfall shortfall : tutor.missingSupplies(subject, amount, body.main().call(this::inventory))) {
             ItemSet items = ItemSet.of(shortfall.items());
             List<Step> some = provision(items, shortfall.count());
             if (some != null && (!shortfall.optional() || some.stream().noneMatch(Foreman::inTheWorld))) {
@@ -982,8 +1029,8 @@ public final class Foreman {
                 return "Not spawned.";
             }
             Location at = player.getLocation();
-            return "Health %.0f/20, food %d/20, at %d %d %d.".formatted(player.getHealth(), player.getFoodLevel(),
-                at.getBlockX(), at.getBlockY(), at.getBlockZ());
+            return "Health %.0f/20, food %d/20, at %d %d %d, %s.".formatted(player.getHealth(), player.getFoodLevel(),
+                at.getBlockX(), at.getBlockY(), at.getBlockZ(), Bestiary.nearby(player, 24));
         });
     }
 

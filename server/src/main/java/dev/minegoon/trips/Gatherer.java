@@ -52,6 +52,12 @@ public final class Gatherer {
     private static final int BITE_TICKS = 40;
     public static final Set<EntityType> MEALS = EnumSet.of(
         EntityType.COW, EntityType.PIG, EntityType.SHEEP, EntityType.CHICKEN);
+    private static final int SIDE_REACH = 8;
+    private static final List<SideOre> SIDE_ORES = List.of(
+        new SideOre(EnumSet.of(Material.IRON_ORE, Material.DEEPSLATE_IRON_ORE),
+            ItemSet.of(List.of(Material.RAW_IRON, Material.IRON_INGOT)), 9),
+        new SideOre(EnumSet.of(Material.COAL_ORE, Material.DEEPSLATE_COAL_ORE),
+            ItemSet.of(List.of(Material.COAL, Material.CHARCOAL)), 8));
 
     private final Body body;
     private final Mover mover;
@@ -90,6 +96,16 @@ public final class Gatherer {
                 candidates.addAll(vision.blocks(minable, MAX_CANDIDATES,
                     takeable(skipped, step.ripe()).and(candidate -> search.reachable(candidate.pos()))));
                 minedSinceLook = 0;
+                Pos side = sideOre(step.blocks(), skipped);
+                if (side != null) {
+                    skipped.add(side);
+                    if (mover.walk(Goal.reach(side), checkpoint) && miner.mine(side).confirmed()) {
+                        vision.touched(side);
+                        body.main().sleep(10);
+                        pickup.collect(side, 4, checkpoint);
+                    }
+                    continue;
+                }
             }
             if (candidates.isEmpty()) {
                 search.next(checkpoint);
@@ -206,29 +222,40 @@ public final class Gatherer {
         return minable;
     }
 
-    /**
-     * The usual tool check, plus a stop when the stone pickaxes are gone and
-     * more can be made from cobble already held. The iron pick stays for ore.
-     */
     private Checkpoint digging(Set<Material> minable, BooleanSupplier oreInSight) {
-        Checkpoint inner = retreat.guarding(neededFor(minable), oreInSight);
-        boolean picky = minable.stream().anyMatch(block -> block.createBlockData().requiresCorrectToolForDrops());
-        if (!picky) {
-            return inner;
+        return retreat.guarding(neededFor(minable), oreInSight);
+    }
+
+    /**
+     * Ore worth a few steps aside while looking for something else: iron for a
+     * better or replacement pickaxe, sword, shield, and bucket, and coal to smelt
+     * it, each until a small stock is held. Only what is close and in sight.
+     */
+    private Pos sideOre(Set<Material> wanted, Set<Pos> skipped) {
+        Set<Material> worth = body.main().call(() -> {
+            Player player = body.player();
+            Set<Material> ores = EnumSet.noneOf(Material.class);
+            List<ItemStack> tools = Hands.tools(player);
+            for (SideOre side : SIDE_ORES) {
+                if (Hands.count(player, side.stock()) < side.keep()) {
+                    side.blocks().stream()
+                        .filter(block -> !wanted.contains(block))
+                        .filter(block -> tools.stream().anyMatch(block.createBlockData()::isPreferredTool))
+                        .forEach(ores::add);
+                }
+            }
+            return ores;
+        });
+        if (worth.isEmpty()) {
+            return null;
         }
-        return () -> {
-            inner.check();
-            if (!retreat.craftingStonePicks()) {
-                return;
-            }
-            boolean makeSome = body.main().call(() -> {
-                Player player = body.player();
-                return player != null && Hands.cheapPicks(player) == 0 && Hands.craftableStonePicks(player) > 0;
-            });
-            if (makeSome) {
-                throw new Retreat.Needed(Retreat.Reason.TOOL, "my stone pickaxes are used up");
-            }
-        };
+        Pos feet = mover.feet();
+        return vision.blocks(worth, 4, takeable(skipped, false)).stream()
+            .filter(pos -> pos.distanceSquared(feet) <= SIDE_REACH * SIDE_REACH)
+            .findFirst().orElse(null);
+    }
+
+    private record SideOre(Set<Material> blocks, ItemSet stock, int keep) {
     }
 
     private static Predicate<ItemStack> neededFor(Set<Material> blocks) {

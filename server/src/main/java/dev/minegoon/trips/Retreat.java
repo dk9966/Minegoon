@@ -59,8 +59,6 @@ public final class Retreat implements Checkpoint {
     private final Fighter fighter;
     private volatile Set<Material> keep = Set.of();
     private volatile boolean spendingLastTool;
-    /** False after a stone-pick restock could not be made from what was already held. */
-    private volatile boolean craftingStonePicks = true;
 
     public Retreat(MainThread main, Helper helper, Fighter fighter) {
         this.main = main;
@@ -94,15 +92,6 @@ public final class Retreat implements Checkpoint {
     /** While a replacement is being made, the worn tool may be used to the end to make it. */
     public void spendLastTool(boolean spending) {
         spendingLastTool = spending;
-    }
-
-    /** Whether a dig should stop and craft stone pickaxes from the cobble already held. */
-    public boolean craftingStonePicks() {
-        return craftingStonePicks;
-    }
-
-    public void craftingStonePicks(boolean crafting) {
-        craftingStonePicks = crafting;
     }
 
     /**
