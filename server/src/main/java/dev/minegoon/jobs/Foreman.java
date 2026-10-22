@@ -69,6 +69,7 @@ public final class Foreman {
     private static final int SETTLE_TICKS = 20;
     private static final long RECOVER_WINDOW_MS = 4 * 60_000;
     private static final int RESPAWN_WAIT_TICKS = 100;
+    private static final int OPEN_SKY = 12;
     /** Tools from best to worst. The diamond and netherite rungs are only ever held, never made here. */
     private static final List<List<Material>> UPGRADES = List.of(
         List.of(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.IRON_PICKAXE,
@@ -648,6 +649,14 @@ public final class Foreman {
             .anyMatch(weapon -> Hands.count(body.player(), ItemSet.of(weapon)) > 0));
     }
 
+    /** Up top, where food and logs are: a new plan packs for its trips again, since the last packing may have failed. */
+    private boolean underOpenSky() {
+        return body.main().call(() -> {
+            Player player = body.player();
+            return player != null && player.getLocation().getBlock().getLightFromSky() >= OPEN_SKY;
+        });
+    }
+
     private int held(Material item) {
         return body.main().call(() -> Hands.count(body.player(), ItemSet.of(item)));
     }
@@ -850,6 +859,9 @@ public final class Foreman {
      * false only if no plan exists even then.
      */
     private boolean replan(long taskId, Set<String> avoid) {
+        if (underOpenSky()) {
+            packed.remove(taskId);
+        }
         try {
             plan(taskId, avoid);
             return true;

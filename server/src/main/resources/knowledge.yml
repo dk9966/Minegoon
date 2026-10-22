@@ -124,13 +124,14 @@ trips:
   # and bridge. Food and logs are only found up top, so they are packed before
   # the task's first trip: food for the whole trip, a little more for more ore
   # (a cooked meat is 6 to 8 hunger, a few minutes of walking and fighting),
-  # and logs for sticks, a table, or a new handle.
+  # and logs for sticks, a table, or a new handle. Only meat: bread and baked
+  # potatoes look cheap to plan but need a village's fields.
   deep:
     iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 2
     copper_sword|stone_sword|iron_sword|diamond_sword|netherite_sword: 1
     shield: 1
     water_bucket: 1
-    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato^: [4, 0.1]
+    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken^: [4, 0.1]
     cobblestone|cobbled_deepslate: 48
     oak_log|spruce_log|birch_log|jungle_log|acacia_log|dark_oak_log|mangrove_log|cherry_log|pale_oak_log^: 3
 

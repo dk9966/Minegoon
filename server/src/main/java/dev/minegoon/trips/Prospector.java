@@ -53,6 +53,8 @@ public final class Prospector {
     private static final int TARGETS = 8;
     /** How far below the feet the bottom of a ravine or pit must be to count as a way down. */
     private static final int SHAFT_DEPTH = 10;
+    /** How far sideways a way down seen before is worth walking back to. */
+    private static final int OPENING_WITHIN = 160;
     private static final int DRY_PASSES = 2;
     /** The knowledge entry for ground a seed can be planted in. */
     public static final String SOIL = "soil";
@@ -67,6 +69,8 @@ public final class Prospector {
     private final Logger log;
     private final Set<Long> seen = new HashSet<>();
     private final Map<String, List<Pos>> visits = new HashMap<>();
+    /** Ways down seen by any search, so a search for something else can go back to one out of sight. */
+    private final List<Pos> knownOpenings = new ArrayList<>();
     private int heading = -1;
     private SearchOrders orders = SearchOrders.NONE;
 
@@ -288,10 +292,19 @@ public final class Prospector {
             }
             List<Pos> openings = new ArrayList<>(vision.shafts(feet.y() - SHAFT_DEPTH, TARGETS));
             openings.addAll(vision.caves(feet.y() - 3, TARGETS));
+            openings.forEach(Prospector.this::rememberOpening);
             openings.removeIf(pos -> pos.y() < find.low());
             openings.sort((a, b) -> Integer.compare(a.y(), b.y()));
             List<Pos> deeper = openings.stream().filter(pos -> pos.y() <= feet.y() - 4).toList();
             if (walkToFirst(deeper, checkpoint)) {
+                return true;
+            }
+            List<Pos> remembered = knownOpenings.stream()
+                .filter(pos -> pos.y() >= find.low() && pos.y() <= feet.y() - 4)
+                .filter(pos -> Math.hypot(pos.x() - feet.x(), pos.z() - feet.z()) <= OPENING_WITHIN)
+                .sorted((a, b) -> Double.compare(a.distanceSquared(feet), b.distanceSquared(feet)))
+                .toList();
+            if (walkToFirst(remembered, checkpoint)) {
                 return true;
             }
             if (find.best() != null && feet.y() > find.best() + 8 && digging()
@@ -483,7 +496,14 @@ public final class Prospector {
     public void forget() {
         seen.clear();
         visits.clear();
+        knownOpenings.clear();
         heading = -1;
+    }
+
+    private void rememberOpening(Pos opening) {
+        if (knownOpenings.stream().noneMatch(pos -> pos.distanceSquared(opening) <= BEEN_THERE * BEEN_THERE)) {
+            knownOpenings.add(opening);
+        }
     }
 
     /** Marks every chunk in sight as looked at. */
