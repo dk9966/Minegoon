@@ -48,6 +48,8 @@ public final class Vision {
      */
     private static final long DARK_SIGHT = 16 * 16;
     private static final int CLIFF = 5;
+    /** Animals make noise: this close, one is found without being seen. */
+    private static final int HEARD = 32;
     private static final int CAVE_DEPTH = 40;
     private static final int SHAFT_WALL = 6;
     private static final int[][] AROUND = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -261,7 +263,10 @@ public final class Vision {
     public record Candidate(WorldView view, Pos pos) {
     }
 
-    /** Living things of these kinds in sight that pass {@code wanted}, nearest first. Grown-ups only. */
+    /**
+     * Living things of these kinds in sight, or close enough to hear behind a
+     * hill or a tree, that pass {@code wanted}, nearest first. Grown-ups only.
+     */
     public List<UUID> creatures(Set<EntityType> kinds, Predicate<Entity> wanted, int limit) {
         return main.call(() -> {
             Player self = player.get();
@@ -270,7 +275,8 @@ public final class Vision {
                 .filter(entity -> kinds.contains(entity.getType()) && entity instanceof LivingEntity && !entity.isDead())
                 .filter(wanted)
                 .filter(entity -> !(entity instanceof Ageable ageable) || ageable.isAdult())
-                .filter(self::hasLineOfSight)
+                .filter(entity -> entity.getLocation().distanceSquared(at) <= HEARD * HEARD
+                    || self.hasLineOfSight(entity))
                 .sorted(Comparator.comparingDouble(entity -> entity.getLocation().distanceSquared(at)))
                 .limit(limit)
                 .map(Entity::getUniqueId)
