@@ -109,6 +109,8 @@ public final class Foreman {
     private final Set<Long> upgraded = new HashSet<>();
     /** Tasks whose first trip packed what only the surface has, for every trip. */
     private final Set<Long> packed = new HashSet<>();
+    /** Jobs queued to pack supplies rather than for the goal itself. */
+    private final Set<Long> packingJobs = new HashSet<>();
     private final Stall stall = new Stall();
     private Thread worker;
     private LongConsumer missionRunner = id -> {
@@ -438,6 +440,7 @@ public final class Foreman {
         supplied.clear();
         upgraded.clear();
         packed.clear();
+        packingJobs.clear();
     }
 
     /**
@@ -534,10 +537,16 @@ public final class Foreman {
         }
         sheltered = true;
         crew.retreat().nightCovered();
-        Optional<Job> next = board.next(task.id());
-        if (hasWeapon() && next.isPresent() && crew.prospector().underground(next.get().step())) {
-            say("It's night up here, and the next thing I need is down in the caves, so I'll head down now.");
-            return false;
+        if (hasWeapon()) {
+            List<Job> skipped = surfacePackingBeforeCaves(task);
+            if (skipped != null) {
+                skipped.forEach(board::complete);
+                say(skipped.isEmpty()
+                    ? "It's night up here, and the next thing I need is down in the caves, so I'll head down now."
+                    : "It's night up here. I have some food, and the rest of the job is down in the caves, so I'll"
+                        + " stop packing and head down now instead of waiting out the night.");
+                return !skipped.isEmpty();
+            }
         }
         if (crew.sleeper().hasBed()) {
             say("It's night up here. I'll sleep and pick this up in the morning.");
@@ -555,6 +564,33 @@ public final class Foreman {
             + ", so I'll dig in until morning.");
         board.addFront(task.id(), new Step.Shelter());
         return true;
+    }
+
+    /**
+     * The food hunts packed for the trip that stand between now and the first
+     * job in the caves, when some food is already held: caves are as dark by
+     * day, so waiting out the night up top only costs time. Null when the next
+     * real job is not underground or there is nothing to eat yet.
+     */
+    private List<Job> surfacePackingBeforeCaves(Task task) {
+        boolean fed = body.main().call(this::inventory).keySet().stream().anyMatch(Material::isEdible);
+        List<Job> skipped = new ArrayList<>();
+        for (Job job : board.jobs(task.id())) {
+            if (job.status() != Job.Status.OPEN && job.status() != Job.Status.ACTIVE) {
+                continue;
+            }
+            boolean food = switch (job.step()) {
+                case Step.Hunt hunt -> hunt.item().members().stream().allMatch(Material::isEdible);
+                case Step.Smelt smelt -> smelt.output().members().stream().allMatch(Material::isEdible);
+                default -> false;
+            };
+            if (fed && packingJobs.contains(job.id()) && food) {
+                skipped.add(job);
+                continue;
+            }
+            return crew.prospector().underground(job.step()) ? skipped : null;
+        }
+        return null;
     }
 
     private boolean armored() {
@@ -646,6 +682,10 @@ public final class Foreman {
         }
         say("Before I " + job.step().describe() + ", I'll make sure I have " + String.join(", ", names) + ".");
         board.addAllFront(task.id(), steps);
+        board.jobs(task.id()).stream()
+            .filter(queued -> queued.status() == Job.Status.OPEN || queued.status() == Job.Status.ACTIVE)
+            .limit(steps.size())
+            .forEach(queued -> packingJobs.add(queued.id()));
         return true;
     }
 
