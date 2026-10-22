@@ -170,6 +170,9 @@ public final class Retreat implements Checkpoint {
         if (main.call(() -> health() >= LOW_HEALTH)) {
             return;
         }
+        if (hungerIsFine && main.call(this::cannotMend)) {
+            return;
+        }
         helper.say("I'm hurt, so I'll stop and heal.");
         for (int second = 0; second < HEAL_SECONDS; second++) {
             main.run(this::digOut);
@@ -182,6 +185,7 @@ public final class Retreat implements Checkpoint {
                     if (!hungerIsFine) {
                         throw new Needed(Reason.HUNGRY, "I'm hurt and have nothing to eat");
                     }
+                    return;
                 }
                 case HEALING -> {
                 }
@@ -214,6 +218,12 @@ public final class Retreat implements Checkpoint {
         }
         boolean fed = Reflexes.eat(player, 20) || player.getFoodLevel() >= REGENERATES_AT;
         return fed ? Mend.HEALING : Mend.STARVING;
+    }
+
+    /** Nothing to eat and too hungry to heal on its own, so waiting brings no health back. */
+    private boolean cannotMend() {
+        Player player = helper.player();
+        return player != null && !player.isDead() && player.getFoodLevel() < REGENERATES_AT && !Food.any(player);
     }
 
     private double health() {

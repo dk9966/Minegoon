@@ -377,7 +377,7 @@ public final class Session {
         Foreman.Crew crew = new Foreman.Crew(
             new Gatherer(body, mover, miner, pickup, retreat, vision, prospector),
             new Crafter(body, miner, placer, pickup),
-            new Homecoming(body, mover, tunneler, pickup, retreat.homeward()),
+            new Homecoming(body, mover, tunneler, pickup, fighter, retreat.homeward()),
             retreat,
             new Farmer(body, mover, miner, pickup, retreat, vision, prospector),
             new Filler(body, mover, retreat, vision, prospector),

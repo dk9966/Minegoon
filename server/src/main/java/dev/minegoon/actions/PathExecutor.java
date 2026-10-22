@@ -180,9 +180,11 @@ public final class PathExecutor {
             Player player = body.player();
             Location at = player.getLocation();
             Step step = steps.get(index);
-            // A vine under the feet makes forward climb instead of walk. Break it before the step is judged.
+            // A vine under the feet makes forward climb instead of walk. Break it before the step is judged,
+            // but only over a floor: a body hanging on the vine would fall.
             Pos occupied = Pos.standing(at);
-            if (step.move() != Move.CLIMB_UP && step.move() != Move.CLIMB_DOWN && vine(body.live(), occupied)) {
+            if (!climbs(step) && !climbs(next(index)) && vine(body.live(), occupied)
+                && has(traits(body.live(), occupied.offset(0, -1, 0)), STANDABLE)) {
                 return new Dig(occupied);
             }
             Pos feet = feet(at, player);
@@ -299,7 +301,11 @@ public final class PathExecutor {
                 return null;
             }
             BlockReader live = body.live();
-            if (step.move().horizontal()) {
+            if (step.move() == Move.CLIMB_UP && !has(traits(live, step.to()), CLIMBABLE)) {
+                refused.add(step.to());
+                return new Failed("nothing to climb at " + step.to() + " for " + step);
+            }
+            if (step.move().horizontal() && !climbs(next(index))) {
                 for (Pos cell : List.of(step.to(), step.to().offset(0, 1, 0))) {
                     // A long fall's landing can be a vine far below. Digging it from up
                     // here fails the whole route, so only break a vine already in reach.
@@ -405,6 +411,10 @@ public final class PathExecutor {
     /** The route ends here or goes up or down next, so the body must stop at the centre of the block. */
     private static boolean needsCentre(Step next) {
         return next == null || !next.move().horizontal();
+    }
+
+    private static boolean climbs(Step step) {
+        return step != null && (step.move() == Move.CLIMB_UP || step.move() == Move.CLIMB_DOWN);
     }
 
     private static boolean straightOn(Step step, Step next) {

@@ -96,17 +96,26 @@ public final class Knowledge {
      * {@code each} more for every one of the thing the trip is after, so a trip
      * for 24 diamonds packs more food than a trip for one. Written as a number,
      * or as {@code [count, each]}. An optional supply, written with a trailing
-     * {@code ?}, is only made when that is cheap.
+     * {@code ?}, is only made when that is cheap. A supply found only up top,
+     * written with a trailing {@code ^}, is packed before the first trip of the
+     * whole task, for every trip the task will make, since a later trip may
+     * start somewhere underground.
      */
-    public record Supply(List<String> items, int count, double each, boolean optional) {
+    public record Supply(List<String> items, int count, double each, boolean optional, boolean upTop) {
 
         static Supply parse(String key, Object amount) {
-            boolean optional = key.endsWith("?");
-            String items = optional ? key.substring(0, key.length() - 1) : key;
+            boolean optional = false;
+            boolean upTop = false;
+            String items = key;
+            while (items.endsWith("?") || items.endsWith("^")) {
+                optional |= items.endsWith("?");
+                upTop |= items.endsWith("^");
+                items = items.substring(0, items.length() - 1);
+            }
             List<String> parts = strings(amount);
             int count = parts.isEmpty() ? number(amount) : Integer.parseInt(parts.get(0));
             double each = parts.size() > 1 ? Double.parseDouble(parts.get(1)) : 0;
-            return new Supply(List.of(items.split("\\|")), count, each, optional);
+            return new Supply(List.of(items.split("\\|")), count, each, optional, upTop);
         }
 
         /** How many to carry for a trip after {@code amount} of something. */

@@ -32,13 +32,16 @@ public final class Homecoming {
     private final Mover mover;
     private final Tunneler tunneler;
     private final Pickup pickup;
+    private final Fighter fighter;
     private final Checkpoint homeward;
 
-    public Homecoming(Body body, Mover mover, Tunneler tunneler, Pickup pickup, Checkpoint homeward) {
+    public Homecoming(Body body, Mover mover, Tunneler tunneler, Pickup pickup, Fighter fighter,
+                      Checkpoint homeward) {
         this.body = body;
         this.mover = mover;
         this.tunneler = tunneler;
         this.pickup = pickup;
+        this.fighter = fighter;
         this.homeward = homeward;
     }
 
@@ -64,14 +67,25 @@ public final class Homecoming {
         goBack(player, null);
     }
 
-    /** Walks back to where it died and picks up whatever is still lying there. */
+    /**
+     * Walks back to where it died and picks up whatever is still lying there.
+     * Whatever killed it is often still there: once a group there is too much
+     * to fight, the things are left rather than dying for them again.
+     */
     public void recover(Step.Recover spot, Checkpoint checkpoint) {
         Pos where = new Pos(spot.x(), spot.y(), spot.z());
         boolean sameWorld = body.main().call(() -> body.world().getName().equals(spot.world()));
-        if (!sameWorld || !mover.walk(Goal.near(where, 2), checkpoint)) {
+        int escapes = fighter.escapes();
+        Checkpoint wary = () -> {
+            checkpoint.check();
+            if (fighter.escapes() != escapes) {
+                throw new ActionFailed("there are too many monsters where I died");
+            }
+        };
+        if (!sameWorld || !mover.walk(Goal.near(where, 2), wary)) {
             throw new ActionFailed("I can't get back to where I died");
         }
-        pickup.collect(where, 8, checkpoint);
+        pickup.collect(where, 8, wary);
     }
 
     /**

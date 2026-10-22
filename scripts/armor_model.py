@@ -60,6 +60,8 @@ def choose(body: dict) -> dict:
                 "visit": [],
                 "blocks": ["diamond_ore", "deepslate_diamond_ore"],
             }}
+        if "diamond" not in user.splitlines()[0]:
+            return {"content": {"ways": [], "biomes": [], "visit": [], "note": ""}}
         return {"content": {
             "ways": ["cave", "cavern"],
             "biomes": [],

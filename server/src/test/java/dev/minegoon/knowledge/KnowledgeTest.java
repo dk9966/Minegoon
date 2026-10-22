@@ -23,7 +23,7 @@ class KnowledgeTest {
         Knowledge knowledge = shipped();
         assertEquals(List.of(), knowledge.problems(biome -> true, thing -> true));
         Find iron = knowledge.find(List.of("iron_ore"));
-        assertEquals(List.of(Way.CLIFF, Way.PEAK, Way.CAVE, Way.CAVERN), iron.ways());
+        assertEquals(List.of(Way.CAVE, Way.CLIFF, Way.CAVERN), iron.ways());
         assertEquals(14, iron.best());
         assertEquals("deep", knowledge.find(List.of("diamond_ore")).trip());
         assertTrue(knowledge.structureNames().contains("village"));
@@ -88,6 +88,21 @@ class KnowledgeTest {
         Knowledge.Supply food = deep.stream().filter(supply -> supply.items().contains("cooked_beef")).findFirst()
             .orElseThrow();
         assertTrue(food.needed(24) > food.needed(1));
+        assertTrue(food.upTop());
+    }
+
+    @Test
+    void upTopAndOptionalMarksReadInEitherOrder() {
+        Knowledge knowledge = Knowledge.read(new StringReader("""
+            trips:
+              deep: {"bread^": 2, "shield?^": 1, "torch": 3}
+            """));
+        List<Knowledge.Supply> deep = knowledge.trip("deep");
+        assertEquals(List.of("bread"), deep.get(0).items());
+        assertTrue(deep.get(0).upTop() && !deep.get(0).optional());
+        assertEquals(List.of("shield"), deep.get(1).items());
+        assertTrue(deep.get(1).upTop() && deep.get(1).optional());
+        assertTrue(!deep.get(2).upTop() && !deep.get(2).optional());
     }
 
     @Test

@@ -100,6 +100,7 @@ public final class Fighter {
     private final Body body;
     private final Mover mover;
     private volatile boolean engaged;
+    private volatile int escapes;
 
     public Fighter(Body body, Mover mover) {
         this.body = body;
@@ -109,6 +110,11 @@ public final class Fighter {
     /** True while a fight has the helper's body. Reflexes stay out of the way. */
     public boolean engaged() {
         return engaged;
+    }
+
+    /** How many times so far a group was too much to fight. Compare two readings to see if one came between. */
+    public int escapes() {
+        return escapes;
     }
 
     /**
@@ -184,6 +190,7 @@ public final class Fighter {
      * from the group until none is close. Worker thread.
      */
     private void escape(Odds odds) {
+        escapes++;
         body.helper().say("Too much for me here (" + odds.names() + "), so I'll "
             + (odds.pillar() ? "get up out of reach." : "back off."));
         if (odds.pillar() && pillarUp()) {

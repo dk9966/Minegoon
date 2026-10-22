@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -126,20 +127,55 @@ public final class Tutor {
     public record Shortfall(Set<Material> items, int count, boolean optional) {
     }
 
+    /** One trip of a task: what it goes after, and how many. */
+    public record Trip(String subject, int amount) {
+    }
+
     /** The supplies for going after {@code amount} of this thing that the helper is short of. */
     public List<Shortfall> missingSupplies(String subject, int amount, Map<Material, Integer> inventory) {
-        String trip = subject == null ? null : knowledge.find(List.of(subject)).trip();
-        List<Shortfall> missing = new ArrayList<>();
-        for (Knowledge.Supply supply : knowledge.trip(trip)) {
-            Set<Material> items = EnumSet.noneOf(Material.class);
-            supply.items().forEach(name -> Optional.ofNullable(Material.matchMaterial(name)).ifPresent(items::add));
-            int held = items.stream().mapToInt(item -> inventory.getOrDefault(item, 0)).sum();
-            int needed = supply.needed(amount);
-            if (!items.isEmpty() && held < needed) {
-                missing.add(new Shortfall(items, needed, supply.optional()));
+        return missingSupplies(new Trip(subject, amount), List.of(), true, inventory);
+    }
+
+    /**
+     * What the helper is short of for the trip it is about to make. With
+     * {@code packing}, that is the first trip of the task: what is only found up
+     * top is packed for this trip and every one in {@code later} too, adding
+     * up, since each trip uses its own. Without it, that was packed already, and
+     * whatever has been used up since is not worth a climb back up for.
+     */
+    public List<Shortfall> missingSupplies(Trip now, List<Trip> later, boolean packing,
+                                           Map<Material, Integer> inventory) {
+        Map<List<String>, Integer> needed = new LinkedHashMap<>();
+        Map<List<String>, Boolean> optional = new LinkedHashMap<>();
+        for (Knowledge.Supply supply : supplies(now)) {
+            if (supply.upTop() && !packing) {
+                continue;
+            }
+            needed.merge(supply.items(), supply.needed(now.amount()), Integer::sum);
+            optional.merge(supply.items(), supply.optional(), Boolean::logicalAnd);
+        }
+        for (Trip trip : packing ? later : List.<Trip>of()) {
+            for (Knowledge.Supply supply : supplies(trip)) {
+                if (supply.upTop()) {
+                    needed.merge(supply.items(), supply.needed(trip.amount()), Integer::sum);
+                    optional.merge(supply.items(), supply.optional(), Boolean::logicalAnd);
+                }
             }
         }
+        List<Shortfall> missing = new ArrayList<>();
+        needed.forEach((names, count) -> {
+            Set<Material> items = EnumSet.noneOf(Material.class);
+            names.forEach(name -> Optional.ofNullable(Material.matchMaterial(name)).ifPresent(items::add));
+            int held = items.stream().mapToInt(item -> inventory.getOrDefault(item, 0)).sum();
+            if (!items.isEmpty() && held < count) {
+                missing.add(new Shortfall(items, count, optional.get(names)));
+            }
+        });
         return missing;
+    }
+
+    private List<Knowledge.Supply> supplies(Trip trip) {
+        return trip.subject() == null ? List.of() : knowledge.trip(knowledge.find(List.of(trip.subject())).trip());
     }
 
     private static String describe(Knowledge.Find find) {

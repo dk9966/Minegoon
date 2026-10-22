@@ -104,6 +104,8 @@ public final class Foreman {
     private final Logger log;
     private final Set<Long> supplied = new HashSet<>();
     private final Set<Long> upgraded = new HashSet<>();
+    /** Tasks whose first trip packed what only the surface has, for every trip. */
+    private final Set<Long> packed = new HashSet<>();
     private final Stall stall = new Stall();
     private Thread worker;
     private LongConsumer missionRunner = id -> {
@@ -366,6 +368,7 @@ public final class Foreman {
         if (active.isPresent()) {
             Task task = active.get();
             board.countDeath(task.id());
+            packed.remove(task.id());
             board.addFront(task.id(), recover);
             launch("task-" + task.id(), () -> {
                 awaitStanding();
@@ -431,6 +434,7 @@ public final class Foreman {
         sheltered = false;
         supplied.clear();
         upgraded.clear();
+        packed.clear();
     }
 
     /**
@@ -588,15 +592,17 @@ public final class Foreman {
         if (!inTheWorld(job.step()) || !supplied.add(job.id())) {
             return false;
         }
-        String subject = crew.prospector().subject(job.step());
-        int amount = switch (job.step()) {
-            case Step.Gather gather -> gather.count();
-            case Step.Hunt hunt -> hunt.count();
-            default -> 1;
-        };
+        boolean packing = packed.add(task.id());
+        List<Tutor.Trip> later = new ArrayList<>();
+        for (Job other : board.jobs(task.id())) {
+            if (other.status() != Job.Status.DONE && other.id() != job.id() && inTheWorld(other.step())) {
+                later.add(trip(other.step()));
+            }
+        }
         List<Step> steps = new ArrayList<>();
         List<String> names = new ArrayList<>();
-        for (Tutor.Shortfall shortfall : tutor.missingSupplies(subject, amount, body.main().call(this::inventory))) {
+        for (Tutor.Shortfall shortfall : tutor.missingSupplies(trip(job.step()), later, packing,
+                body.main().call(this::inventory))) {
             ItemSet items = ItemSet.of(shortfall.items());
             List<Step> some = provision(items, shortfall.count());
             if (some != null && (!shortfall.optional() || some.stream().noneMatch(Foreman::inTheWorld))) {
@@ -610,6 +616,15 @@ public final class Foreman {
         say("Before I " + job.step().describe() + ", I'll make sure I have " + String.join(", ", names) + ".");
         board.addAllFront(task.id(), steps);
         return true;
+    }
+
+    private Tutor.Trip trip(Step step) {
+        int amount = switch (step) {
+            case Step.Gather gather -> gather.count();
+            case Step.Hunt hunt -> hunt.count();
+            default -> 1;
+        };
+        return new Tutor.Trip(crew.prospector().subject(step), amount);
     }
 
     /** The worn tool may be spent on making its own replacement. */

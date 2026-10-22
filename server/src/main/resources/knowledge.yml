@@ -31,7 +31,9 @@
 find:
   coal_ore:     {y: [0, 320],   best: 45,  ways: [cliff, peak, cave, cavern]}
   copper_ore:   {y: [-16, 112], best: 43,  ways: [cliff, cave, cavern], biomes: [dripstone_caves]}
-  iron_ore:     {y: [-64, 320], best: 14,  ways: [cliff, peak, cave, cavern], trip: mine}
+  # Iron also shows on peaks, but reaching it means climbing vines and cliffs,
+  # where one slip is a long fall. The caves on the way down have plenty.
+  iron_ore:     {y: [-64, 320], best: 14,  ways: [cave, cliff, cavern], trip: mine}
   lapis_ore:    {y: [-64, 64],  best: -2,  ways: [cave, cavern, peak]}
   gold_ore:     {y: [-64, 256], best: -18, ways: [roam, cave, cavern], biomes: [badlands, eroded_badlands, wooded_badlands]}
   redstone_ore: {y: [-64, 16],  best: -59, ways: [cave, cavern, peak], trip: deep}
@@ -116,19 +118,21 @@ trips:
   mine:
     stone_pickaxe|copper_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
   # Down open caves, ravines and pits, with no digging on the way, and back up
-  # only once the job is done. Everything is packed up top, where it is quick
-  # to get: a second pickaxe, since the one in use digs everything; a sword and
-  # a shield for what lives down there; a water bucket for long drops into a
-  # ravine and for lava; food for the whole trip, more for more ore; blocks to
-  # pillar out of reach and bridge; logs for sticks, a table, or a new handle.
+  # only once the job is done: a second pickaxe, since the one in use digs
+  # everything; a sword and a shield for what lives down there; a water bucket
+  # for long drops into a ravine and for lava; blocks to pillar out of reach
+  # and bridge. Food and logs are only found up top, so they are packed before
+  # the task's first trip: food for the whole trip, a little more for more ore
+  # (a cooked meat is 6 to 8 hunger, a few minutes of walking and fighting),
+  # and logs for sticks, a table, or a new handle.
   deep:
     iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 2
     copper_sword|stone_sword|iron_sword|diamond_sword|netherite_sword: 1
     shield: 1
     water_bucket: 1
-    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: [6, 0.5]
+    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato^: [4, 0.1]
     cobblestone|cobbled_deepslate: 48
-    oak_log|spruce_log|birch_log|jungle_log|acacia_log|dark_oak_log|mangrove_log|cherry_log|pale_oak_log: 3
+    oak_log|spruce_log|birch_log|jungle_log|acacia_log|dark_oak_log|mangrove_log|cherry_log|pale_oak_log^: 3
 
 # How to tell a structure from blocks in sight. Each kind of mark block adds its
 # weight once; a structure counts as seen when the marks within 24 blocks of each
