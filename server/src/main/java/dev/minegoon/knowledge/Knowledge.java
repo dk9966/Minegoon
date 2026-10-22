@@ -3,6 +3,8 @@ package dev.minegoon.knowledge;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -165,16 +167,28 @@ public final class Knowledge {
         return new Knowledge(Map.copyOf(finds), Map.copyOf(trips), List.copyOf(structures), problems);
     }
 
-    /** Everything known about these names, the first name's facts first. */
+    /**
+     * Everything known about these names, the first name's facts first. Biomes
+     * go most shared first: where more of the things live, more turn up.
+     */
     public Find find(Collection<String> names) {
         Find merged = null;
+        Map<String, Integer> shared = new HashMap<>();
         for (String name : names) {
             Find one = entry(name);
             if (one != null) {
                 merged = merged == null ? one : merged.then(one);
+                one.biomes().forEach(biome -> shared.merge(biome, 1, Integer::sum));
             }
         }
-        return merged == null ? Find.ANYWHERE : merged;
+        if (merged == null) {
+            return Find.ANYWHERE;
+        }
+        List<String> biomes = merged.biomes().stream()
+            .sorted(Comparator.comparingInt((String biome) -> shared.getOrDefault(biome, 0)).reversed())
+            .toList();
+        return new Find(merged.ways(), merged.low(), merged.high(), merged.best(), biomes, merged.visit(),
+            merged.trip());
     }
 
     /** The file has an entry for this thing. */

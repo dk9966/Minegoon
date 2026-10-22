@@ -67,6 +67,18 @@ class KnowledgeTest {
     }
 
     @Test
+    void mergedBiomesGoWhereMoreOfTheThingsLiveFirst() {
+        Knowledge knowledge = Knowledge.read(new StringReader("""
+            find:
+              chicken: {ways: [roam], biomes: [jungle, plains]}
+              cow: {ways: [roam], biomes: [forest, plains]}
+              pig: {ways: [roam], biomes: [forest, plains]}
+            """));
+        assertEquals(List.of("plains", "forest", "jungle"), knowledge.find(List.of("chicken", "cow", "pig")).biomes());
+        assertEquals(List.of("jungle", "plains"), knowledge.find(List.of("chicken")).biomes());
+    }
+
+    @Test
     void tripSuppliesGrowWithWhatTheTripIsAfter() {
         Knowledge knowledge = Knowledge.read(new StringReader("""
             trips:

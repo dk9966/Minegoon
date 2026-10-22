@@ -15,6 +15,7 @@ import dev.minegoon.world.Structures;
 import dev.minegoon.world.Vision;
 import dev.minegoon.world.WorldView;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -370,7 +371,9 @@ public final class Prospector {
         /**
          * To the nearest ground in sight of a listed biome that is half a sight
          * from every place already looked from, so the walk shows new ground,
-         * also when the helper is already in that biome.
+         * also when the helper is already in that biome. A biome listed earlier
+         * goes first, however far: when several things are wanted, it is where
+         * more of them live.
          */
         private boolean roam(Checkpoint checkpoint) {
             if (find.biomes().isEmpty()) {
@@ -380,6 +383,7 @@ public final class Prospector {
             double apart = Math.pow(vision.radius() / 2.0, 2);
             List<Pos> patches = vision.patches().stream()
                 .filter(patch -> find.biomes().contains(patch.biome()))
+                .sorted(Comparator.comparingInt(patch -> find.biomes().indexOf(patch.biome())))
                 .map(Vision.Patch::at)
                 .filter(at -> nearest(lookouts, at) >= apart)
                 .limit(TARGETS)
