@@ -45,7 +45,7 @@ find:
     biomes: [meadow, cherry_grove, grove, snowy_slopes, jagged_peaks, frozen_peaks, stony_peaks,
              windswept_hills, windswept_gravelly_hills, windswept_forest]
 
-  stone:        {y: [-64, 320], best: 40, ways: [cliff, dig]}
+  stone:        {y: [-64, 320], best: 40, ways: [cliff, cave, dig]}
   deepslate:    {y: [-64, 8],   best: -8, ways: [cave, dig]}
   granite:      {ways: [cliff, dig]}
   diorite:      {ways: [cliff, dig]}
@@ -125,13 +125,14 @@ trips:
   # the task's first trip: food for the whole trip, a little more for more ore
   # (a cooked meat is 6 to 8 hunger, a few minutes of walking and fighting),
   # and logs for sticks, a table, or a new handle. Only meat: bread and baked
-  # potatoes look cheap to plan but need a village's fields.
+  # potatoes look cheap to plan but need a village's fields. Raw meat counts,
+  # since it can be cooked down there; raw chicken can poison, so not that.
   deep:
     iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 2
     copper_sword|stone_sword|iron_sword|diamond_sword|netherite_sword: 1
     shield: 1
     water_bucket: 1
-    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken^: [3, 0.1]
+    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|beef|porkchop|mutton^: [3, 0.1]
     cobblestone|cobbled_deepslate: 48
     oak_log|spruce_log|birch_log|jungle_log|acacia_log|dark_oak_log|mangrove_log|cherry_log|pale_oak_log^: 3
 
