@@ -6,11 +6,13 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -41,6 +43,8 @@ public final class Vision {
 
     private static final long FRESH_MS = 8_000;
     private static final int MAX_LOOKS = 4_000;
+    /** Heights, in blocks, that share out the looks. */
+    private static final int LOOK_BAND = 4;
     /**
      * Squared distance within which eyes in daylight still make out a dark block.
      * Further dark blocks are cave insides the sky never reaches, which cannot be
@@ -439,22 +443,39 @@ public final class Vision {
     private record Scored(Pos pos, double score) {
     }
 
-    /** The best scored spots the eyes can see into, best first. */
+    /**
+     * The best scored spots the eyes can see into, best first. The looks are
+     * shared out between heights, best first within each: from the surface
+     * nearly every deep floor is out of sight behind rock, and looking at
+     * those first would use up every look before the cave mouths in a hillside.
+     */
     private List<Pos> inSight(WorldView view, List<Scored> found, int limit) {
         Sight.Eye eye = eye();
-        found.sort(Comparator.comparingDouble(Scored::score).reversed());
-        List<Pos> seen = new ArrayList<>();
-        int looks = 0;
+        Comparator<Scored> best = Comparator.comparingDouble(Scored::score).reversed();
+        Map<Integer, List<Scored>> bands = new TreeMap<>();
         for (Scored candidate : found) {
-            if (seen.size() == limit || looks++ == MAX_LOOKS) {
-                break;
-            }
-            Pos pos = candidate.pos();
-            if (Sight.seesInto(view, eye, pos.x(), pos.y(), pos.z())) {
-                seen.add(pos);
+            bands.computeIfAbsent(Math.floorDiv(candidate.pos().y(), LOOK_BAND), band -> new ArrayList<>()).add(candidate);
+        }
+        List<Iterator<Scored>> queues = new ArrayList<>();
+        bands.values().forEach(band -> {
+            band.sort(best);
+            queues.add(band.iterator());
+        });
+        List<Scored> seen = new ArrayList<>();
+        int looks = 0;
+        while (looks < MAX_LOOKS && queues.stream().anyMatch(Iterator::hasNext)) {
+            for (Iterator<Scored> queue : queues) {
+                if (!queue.hasNext() || looks++ >= MAX_LOOKS) {
+                    continue;
+                }
+                Scored candidate = queue.next();
+                Pos pos = candidate.pos();
+                if (Sight.seesInto(view, eye, pos.x(), pos.y(), pos.z())) {
+                    seen.add(candidate);
+                }
             }
         }
-        return seen;
+        return seen.stream().sorted(best).limit(limit).map(Scored::pos).toList();
     }
 
     /** The highest ground in sight, at least {@code minY} high, highest first. */

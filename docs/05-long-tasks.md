@@ -422,3 +422,38 @@ October 21, 2026. Seed `minegoon`, practice server, a diamond-trip kit (iron pic
 Try 1 is the one that finished. The big model wrote the plan once, at the start. The small desk ordered each piece, and called `finish` only after all four were in hand. One small advice call fired while a search was dry, and told it to stay near y=-59.
 
 Tries 2 and 3 made the helmet and the chestplate, then left diamond level (sticks for more stone picks, or iron for a worn iron pick). Try 2 suffocated in a wall on the way up, then died to a zombie, a creeper, and a drowned while walking back for the drops, and the set was gone. Try 3 died to an enderman and then a creeper on the iron trip, and the set was gone. A death respawns at world spawn, and the drops are too far to reach before they despawn once the walk back also dies.
+
+### Diamond armor from empty hands
+
+October 22, 2026. Same seed and sentence, but no kit: `scripts/armor_runs.py` regenerates the world from the seed before each try (`FRESH=1`), clears the helper, and asks. The helper has to work out what the trip needs and fetch it. The goal is under 40 minutes with no deaths.
+
+What changed in the body:
+
+- **No digging for ore.** Ore searches walk through open ground only: cave mouths, ravine and pit bottoms, cave floors in sight, and ways down seen earlier in the search (`Prospector.knownOpenings`). Stairs and tunnels happen only when a player asks for digging. Iron is looked for in caves and cliffs, not on peaks, and stone in caves too.
+- **Packing for the whole task up front.** A trip supply marked `^` in `knowledge.yml` is only found up top (meat, logs). Before the first trip it is packed for every trip the task will make. Raw meat counts, since it is cooked below. Once packing is done, the goal is planned again from what is held. Otherwise the tool chain packing made on the way (table, wooden pickaxe, furnace) gets made a second time.
+- **Upgrades.** A better pickaxe, sword, or shield is made first whenever what is held makes one with no trip. The plan's own materials are not spent on it.
+- **Night.** Without armor, nightfall up top is a reason to stop. With a weapon and some food, when the rest of the job is in the caves, it drops the meat still to hunt and heads down. Otherwise it uses a bed it has or can make, or digs in until morning.
+- **Mobs.** `Bestiary` knows every mob's health, damage, and tactic. Each fight weighs the whole group against the helper's weapon, armor, health, and shield, and backs off or pillars up when the group is too much. Endermen are never looked at. These were added in this round:
+  - A fight is dropped when another creeper closes in.
+  - A creeper after the helper is backed away from before its fuse starts, not only once it hisses.
+  - A getaway steers away from every creeper near, including ones the fight left out.
+- **Fixes found in the tries:**
+  - Swords no longer break leaves. Paper calls any tool "preferred" on a block that needs none, so both swords wore out on a jungle canopy, leaving the helper unarmed at night.
+  - A meal hunt no longer stalls waiting to heal.
+  - A route no longer cuts the vines it is about to climb.
+  - A cell whose step failed twice is planned around.
+  - Animals within 32 blocks count as seen even behind trees.
+  - A merged hunt for several animals ranks biomes by how many of them live there. The jungle at spawn holds only chickens, and a forest with all four is 64 blocks east.
+- **Death log.** Each death logs its cause and the mobs within 16 blocks.
+
+What the tries showed. Times are seconds since the ask.
+
+| Try | Furthest | Deaths | What held it up |
+|---|---|---|---|
+| 12 | meat hunt, night 1 | 0 | Both swords wore out on leaves, so it dug in at nightfall as if unarmed. |
+| 13 | meat hunt, 3 of 6 at nightfall (585 s) | 0 | Dug in for the whole night next to the cows it had just hunted. |
+| 15 | cave at y=54, night 1 | 0 | The hunt found no animals after 8 places and gave up. With no food it dug in. |
+| 16 | heading down at night 1 | 1, creeper | The cook step failed on half the meat, the replan packed again, and it hunted in the dark. |
+| 17 | iron search, 2000 s | 1, creeper | Reached a stone pickaxe and the iron search by 700 s. It found no way down deeper than y=63 in 600 blocks of walking, and died in the second night while backing off from a group. |
+
+The surface now takes about 10 minutes: logs, a wooden pickaxe, cobblestone from a cave mouth, swords, a stone pickaxe, and some meat. What is still missing is a way down. On this seed the openings in sight near spawn are shallow, so the iron search walks the surface for 20 minutes or more.
