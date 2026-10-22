@@ -6,8 +6,9 @@ treated as the big model and the desk and advice names as the small one. Each
 call is appended to scripts/armor-model/calls.jsonl before it is answered, so
 a run still has the list if the plugin log is lost.
 
-It never orders strip mining. Diamond armor is four get_items calls, and the
-body decides how to reach the ore.
+It never orders strip mining. Diamond armor is one get_items for all 24
+diamonds, so the helper packs for one trip down and stays there, then one
+get_items per piece. The body decides how to reach the ore.
 """
 
 from __future__ import annotations
@@ -20,11 +21,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent / "armor-model"
 LOG = ROOT / "calls.jsonl"
 PIECES = ("diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots")
+DIAMONDS = 24
 
 PLAN = {
     "steps": [
-        "Get one diamond helmet, one diamond chestplate, one diamond leggings, and one diamond boots.",
-        "Find the diamonds in caves. Do not strip mine.",
+        f"Get all {DIAMONDS} diamonds in one trip down, through caves. Do not strip mine.",
+        "Craft one diamond helmet, one diamond chestplate, one diamond leggings, and one diamond boots.",
     ],
     "done_when": [{"kind": "have", "item": piece, "count": 1} for piece in PIECES],
 }
@@ -32,7 +34,7 @@ PLAN = {
 
 def piece_done(briefing: str, piece: str) -> bool:
     for line in briefing.splitlines():
-        if line.startswith("get_items") and piece in line and "-> ok " in line:
+        if line.startswith("get_items") and f'"item":"{piece}"' in line and "-> ok " in line:
             return True
     return False
 
@@ -77,6 +79,8 @@ def choose(body: dict) -> dict:
     piece = next_piece(user)
     if piece is None:
         return {"tool": "finish", "arguments": {"summary": "Holding a full set of diamond armor."}}
+    if piece == PIECES[0] and not piece_done(user, "diamond"):
+        return {"tool": "get_items", "arguments": {"item": "diamond", "count": DIAMONDS}}
     return {"tool": "get_items", "arguments": {"item": piece, "count": 1}}
 
 

@@ -67,6 +67,30 @@ class KnowledgeTest {
     }
 
     @Test
+    void tripSuppliesGrowWithWhatTheTripIsAfter() {
+        Knowledge knowledge = Knowledge.read(new StringReader("""
+            trips:
+              deep: {shield: 1, "bread|cooked_beef": [6, 0.5]}
+            """));
+        List<Knowledge.Supply> deep = knowledge.trip("deep");
+        assertEquals(1, deep.get(0).needed(24));
+        assertEquals(List.of("bread", "cooked_beef"), deep.get(1).items());
+        assertEquals(7, deep.get(1).needed(1));
+        assertEquals(18, deep.get(1).needed(24));
+    }
+
+    @Test
+    void theDeepTripPacksForTheWholeTripWithNoStaircasePicks() throws IOException {
+        List<Knowledge.Supply> deep = shipped().trip("deep");
+        assertTrue(deep.stream().noneMatch(supply -> supply.items().equals(List.of("stone_pickaxe"))));
+        assertTrue(deep.stream().anyMatch(supply -> supply.items().contains("water_bucket")));
+        assertTrue(deep.stream().anyMatch(supply -> supply.items().contains("oak_log")));
+        Knowledge.Supply food = deep.stream().filter(supply -> supply.items().contains("cooked_beef")).findFirst()
+            .orElseThrow();
+        assertTrue(food.needed(24) > food.needed(1));
+    }
+
+    @Test
     void reportsTyposInsteadOfIgnoringThem() {
         Knowledge knowledge = Knowledge.read(new StringReader("""
             find:

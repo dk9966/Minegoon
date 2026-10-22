@@ -114,18 +114,21 @@ trips:
   # Stairs down to y=14 and a branch mine can wear out a stone pickaxe, but most
   # iron is found well above that, and a broken pickaxe is replaced anyway.
   mine:
-    stone_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
-  # Down the caves. When no opening in sight is actually deep, the cave move
-  # stairs toward the best height instead. That staircase is a few hundred
-  # blocks, so stone pickaxes do it and the iron one is kept for the ore.
-  # The axe is the weapon. Blocks are for climbing and bridging out of a cave.
+    stone_pickaxe|copper_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
+  # Down open caves, ravines and pits, with no digging on the way, and back up
+  # only once the job is done. Everything is packed up top, where it is quick
+  # to get: a second pickaxe, since the one in use digs everything; a sword and
+  # a shield for what lives down there; a water bucket for long drops into a
+  # ravine and for lava; food for the whole trip, more for more ore; blocks to
+  # pillar out of reach and bridge; logs for sticks, a table, or a new handle.
   deep:
-    iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 1
-    stone_pickaxe: 4
-    stone_axe|iron_axe|diamond_axe|netherite_axe: 1
+    iron_pickaxe|diamond_pickaxe|netherite_pickaxe: 2
+    copper_sword|stone_sword|iron_sword|diamond_sword|netherite_sword: 1
     shield: 1
-    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: 6
-    cobblestone|cobbled_deepslate: 32
+    water_bucket: 1
+    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken|bread|baked_potato: [6, 0.5]
+    cobblestone|cobbled_deepslate: 48
+    oak_log|spruce_log|birch_log|jungle_log|acacia_log|dark_oak_log|mangrove_log|cherry_log|pale_oak_log: 3
 
 # How to tell a structure from blocks in sight. Each kind of mark block adds its
 # weight once; a structure counts as seen when the marks within 24 blocks of each

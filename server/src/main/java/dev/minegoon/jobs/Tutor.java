@@ -126,16 +126,17 @@ public final class Tutor {
     public record Shortfall(Set<Material> items, int count, boolean optional) {
     }
 
-    /** The supplies for going after this thing that the helper is short of. */
-    public List<Shortfall> missingSupplies(String subject, Map<Material, Integer> inventory) {
+    /** The supplies for going after {@code amount} of this thing that the helper is short of. */
+    public List<Shortfall> missingSupplies(String subject, int amount, Map<Material, Integer> inventory) {
         String trip = subject == null ? null : knowledge.find(List.of(subject)).trip();
         List<Shortfall> missing = new ArrayList<>();
         for (Knowledge.Supply supply : knowledge.trip(trip)) {
             Set<Material> items = EnumSet.noneOf(Material.class);
             supply.items().forEach(name -> Optional.ofNullable(Material.matchMaterial(name)).ifPresent(items::add));
             int held = items.stream().mapToInt(item -> inventory.getOrDefault(item, 0)).sum();
-            if (!items.isEmpty() && held < supply.count()) {
-                missing.add(new Shortfall(items, supply.count(), supply.optional()));
+            int needed = supply.needed(amount);
+            if (!items.isEmpty() && held < needed) {
+                missing.add(new Shortfall(items, needed, supply.optional()));
             }
         }
         return missing;

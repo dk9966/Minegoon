@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """Three tries at a full set of diamond armor, on the practice server.
 
-Each try starts at spawn in the morning with a diamond-trip kit (an iron
-pickaxe, stone pickaxes for the staircase, food, blocks). The sentence goes
-through the front desk, so the big planner and the small desk both get to
-speak. Model fires are the model_fire lines in the plugin's results.jsonl.
+Each try starts at spawn in the morning with empty hands: the helper works out
+what the trip takes and gets it itself. The sentence goes through the front
+desk, so the big planner and the small desk both get to speak. Model fires are
+the model_fire lines in the plugin's results.jsonl. Every poll also records
+where the helper is, its health, and the mobs near it, so a run's route can be
+read back afterwards.
 
     python3 scripts/armor_runs.py
 
-TIMEOUT is the seconds allowed for one try (default 5400).
+TIMEOUT is the seconds allowed for one try (default 3600). TRIES is how many
+tries to run (default 3). The goal is a finish inside 40 minutes.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -23,19 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "infra" / "data"
 RESULTS = DATA / "plugins" / "Minegoon" / "results.jsonl"
 OUT = ROOT / "scripts" / "results" / "armor"
-TIMEOUT = int(os.environ.get("TIMEOUT", "5400"))
+TIMEOUT = int(os.environ.get("TIMEOUT", "3600"))
+TRIES = int(os.environ.get("TRIES", "3"))
+POLL = 10
 PIECES = ("diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots")
-KIT = (
-    ("iron_pickaxe", 1),
-    ("stone_pickaxe", 4),
-    ("stone_axe", 1),
-    ("shield", 1),
-    ("cooked_beef", 32),
-    ("cobblestone", 64),
-    ("stick", 16),
-    ("crafting_table", 1),
-)
 ASK = "get a full set of diamond armor"
+HELPER = "Builder"
+STATUS_LINE = re.compile(r"Health (\d+)/20, food (\d+)/20, at (-?\d+) (-?\d+) (-?\d+), ([^.|]*)")
 
 
 def say(message: str) -> None:
@@ -75,20 +73,33 @@ def wait_ready() -> None:
     raise RuntimeError("practice server did not answer")
 
 
+def point(started: float) -> dict | None:
+    """Where the helper is now, from the status line: position, health, food, mobs near."""
+    try:
+        status = rcon("minegoon", "status").replace("\n", " | ")
+    except (RuntimeError, subprocess.TimeoutExpired):
+        return None
+    found = STATUS_LINE.search(status)
+    if not found:
+        return {"t": int(time.time() - started), "status": status[:240]}
+    health, food, x, y, z, mobs = found.groups()
+    return {"t": int(time.time() - started), "x": int(x), "y": int(y), "z": int(z),
+            "health": int(health), "food": int(food), "mobs": mobs.strip(), "status": status[:240]}
+
+
 def run_once(number: int) -> dict:
-    say(f"--- try {number}: reset, kit, ask ---")
+    say(f"--- try {number}: reset, empty hands, ask ---")
     rcon("minegoon", "reset")
     rcon("time", "set", "day")
-    for item, count in KIT:
-        rcon("give", "Builder", item, str(count))
     before = len(lines())
     started = time.time()
     rcon("minegoon", "ask", ASK)
     fires: list[dict] = []
+    track: list[dict] = []
     mission = None
     deadline = started + TIMEOUT
     while time.time() < deadline:
-        time.sleep(20)
+        time.sleep(POLL)
         fresh = lines()[before:]
         fires = [row["model_fire"] for row in fresh if "model_fire" in row]
         missions = [row for row in fresh if row.get("request") == ASK or row.get("mission")]
@@ -96,13 +107,11 @@ def run_once(number: int) -> dict:
         if ended:
             mission = ended[-1]
             break
-        elapsed = int(time.time() - started)
-        if elapsed % 60 < 20:
-            try:
-                status = rcon("minegoon", "status").replace("\n", " | ")
-            except RuntimeError as error:
-                status = str(error)
-            say(f"  t={elapsed}s fires={len(fires)} {status[:240]}")
+        sample = point(started)
+        if sample is not None:
+            track.append(sample)
+        if sample is not None and sample["t"] % 60 < POLL:
+            say(f"  t={sample['t']}s fires={len(fires)} {sample['status']}")
     else:
         say("  timed out, stopping")
         try:
@@ -118,10 +127,14 @@ def run_once(number: int) -> dict:
         inventory = rcon("minegoon", "inventory")
     except RuntimeError as error:
         inventory = str(error)
+    tasks = [row for row in fresh if "task" in row and "goal" in row]
     record = {
         "try": number,
         "seconds": int(time.time() - started),
         "mission": mission,
+        "tasks": tasks,
+        "deaths": sum(row.get("deaths", 0) for row in tasks),
+        "track": track,
         "model_fires": fires,
         "big": sum(1 for fire in fires if fire["size"] == "big"),
         "small": sum(1 for fire in fires if fire["size"] == "small"),
@@ -138,7 +151,7 @@ def run_once(number: int) -> dict:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    records = [run_once(number) for number in (1, 2, 3)]
+    records = [run_once(number) for number in range(1, TRIES + 1)]
     path = OUT / f"{stamp}.json"
     path.write_text(json.dumps(records, indent=2))
     say(f"wrote {path}")

@@ -92,15 +92,26 @@ public final class Knowledge {
     }
 
     /**
-     * Carry {@code count} of any of {@code items} before the trip. An optional
-     * supply, written with a trailing {@code ?}, is only made when that is cheap.
+     * Carry {@code count} of any of {@code items} before the trip, plus
+     * {@code each} more for every one of the thing the trip is after, so a trip
+     * for 24 diamonds packs more food than a trip for one. Written as a number,
+     * or as {@code [count, each]}. An optional supply, written with a trailing
+     * {@code ?}, is only made when that is cheap.
      */
-    public record Supply(List<String> items, int count, boolean optional) {
+    public record Supply(List<String> items, int count, double each, boolean optional) {
 
-        static Supply parse(String key, int count) {
+        static Supply parse(String key, Object amount) {
             boolean optional = key.endsWith("?");
             String items = optional ? key.substring(0, key.length() - 1) : key;
-            return new Supply(List.of(items.split("\\|")), count, optional);
+            List<String> parts = strings(amount);
+            int count = parts.isEmpty() ? number(amount) : Integer.parseInt(parts.get(0));
+            double each = parts.size() > 1 ? Double.parseDouble(parts.get(1)) : 0;
+            return new Supply(List.of(items.split("\\|")), count, each, optional);
+        }
+
+        /** How many to carry for a trip after {@code amount} of something. */
+        public int needed(int amount) {
+            return count + (int) Math.ceil(each * Math.max(0, amount));
         }
     }
 
@@ -129,7 +140,7 @@ public final class Knowledge {
         Map<String, List<Supply>> trips = new LinkedHashMap<>();
         map(root.get("trips")).forEach((name, entry) -> {
             List<Supply> supplies = new ArrayList<>();
-            map(entry).forEach((items, count) -> supplies.add(Supply.parse(items, number(count))));
+            map(entry).forEach((items, amount) -> supplies.add(Supply.parse(items, amount)));
             trips.put(name, List.copyOf(supplies));
         });
         List<Structure> structures = new ArrayList<>();

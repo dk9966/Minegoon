@@ -53,7 +53,10 @@ public final class MissionRunner {
         whole request is done (the helper has N of an item, or is within R blocks of a player). Choose checks
         that all hold at the end, after anything is handed over.
         get_items does long work on its own: it plans, gathers, crafts, smelts, and fights for everything an
-        item needs. Ask it for the item the player wants, not for the parts.
+        item needs, and packs what a dangerous trip takes before it goes. Ask it for the item the player wants,
+        not for the parts, with one exception: when several items need the same material from a long trip, such
+        as diamonds for a set of diamond armor, first ask for all of that material in one call, so the helper
+        goes down once, then ask for each item.
         Give get_items a search only when the player said how or where to look, and use the dig way only when
         they asked for strip or branch mining.
         When a step fails, read why, then try another way or write a new plan.
