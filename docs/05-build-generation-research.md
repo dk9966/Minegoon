@@ -183,6 +183,33 @@ flowchart LR
 
 ---
 
+## Functional builds: farms, redstone, and interiors
+
+Checked October 22, 2026, because a castle and a machine are different jobs.
+
+**Iron golem farms and creeper farms should be copied, not generated.** No public generator claims a working mob farm, and the ones that list their limits say so. Block Dreamer says it will not do redstone circuits or command-block contraptions. A farm fails if one hopper faces the wrong way, a villager never claims a bed, or the ground around the farm is not spawn-proofed. Those rules are version-specific and mostly outside the file. [litematica.com's farm guide](https://litematica.com/farm-schematics/) puts it plainly: a castle from an old file is still a castle; a farm from an old file may be a sculpture.
+
+Working designs already exist as `.litematic` files a bot can follow the same way it follows a generated castle:
+
+| Build | Size | Blocks | Version stated | Link |
+|---|---|---|---|---|
+| Iron golem farm (Kurotsuno002) | 46 x 20 x 44 | 1,560 | Java 26.3 | [mc-schematics.com](https://mc-schematics.com/s/iron-golem-farm-db530f5fd0) |
+| Easy iron farm (Courone) | 58 x 56 x 32 | 3,222 | Java 1.21+ | [abfielder](https://abfielder.com/Products/ProductDetails.php?id=11536) |
+| Compact iron farm, 3 villagers (Mangraft067) | 19 x 7 x 19 | 1,848 | not stated on the page | [abfielder](https://abfielder.com/Products/ProductDetails.php?id=12992) |
+| Easy creeper farm (Courone) | 21 x 21 x 35 | 3,319 | Java 1.21+ | [abfielder](https://abfielder.com/Products/ProductDetails.php?id=10974) |
+
+A farm file is only the blocks. The bot also has to do the setup the file cannot contain: pick a site far from other villages, spawn-proof the area, bring villagers and a name-tagged zombie, wait until the villagers claim beds, and watch that golems actually spawn before calling it done. Hubs such as [Litematic Hub](https://schematics.base44.app/) already sort community farms (iron, gold, slime, shulker, cobble) with claimed rates. Those rates are the author's, not something we have measured.
+
+**Redstone logic can be generated if something simulates it.** [Lemma Redstone MCP](https://www.npmjs.com/package/lemma-redstone-mcp) (v0.2.7, July 2026) lets a model place dust, repeaters, pistons, and observers, run a tick-accurate simulator, and export `.schem` or `.litematic`. Its built-in patterns are small: switches, AND/OR/NOT, a piston door. The authors say the simulator checks logic, not clocks, and it does not model villagers or mob spawning. So it could design a door or a lamp circuit. It cannot prove an iron farm works. Cairn's spec describes the same idea (describe the signal, let a compiler route the dust) but has no compiler yet.
+
+**Interiors split in two.** Decorative rooms are already generated. [Spaleforce](https://spaleforce.com/minecraft-house-generator) furnishes kitchens, bedrooms, and living rooms when you ask, and its example world has 82 furnished rooms. [Block Dreamer](https://blockdreamer.com/) builds interiors with doors, stairs, lanterns, and furniture, checks that beds have a floor and lanterns have a chain, and gives a material list plus a layer plan. [SchemForge](https://schemforge.com/) has a survival-house prompt with a porch, chimney, and farm plot. These are furniture, not machines.
+
+Functional rooms come from human schematics: a [starter base with auto-furnaces, bulk storage, and a trading hall](https://buildschematics.com/presets/starter-base-with-auto-furnaces-and-trading-hall) (58 x 47 x 61, 37,767 blocks, listed for 1.21 through 26.3), and a [lakehouse](https://mcbuild.org/schematics/18536:lakehouse) with 52 chests, furnaces, a brewing stand, and a level-30 enchanting setup. An older [all-in-one machine](https://mcbuild.org/schematics/13165:ultimate-survival-machine) (1.12.2) bundles a 417-item sorter, smelting, and an iron farm, which is too old to trust on 26.3.
+
+**What this means for Minegoon.** Generate the shell and the pretty rooms. For anything that has to *work* (iron farm, creeper farm, sorter, trading hall), keep a small library of version-checked `.litematic` modules and a playbook for the living parts: villagers, animals, name tags, and a test that the machine actually produces items. Drop those modules into a generated base instead of asking the model to invent the farm.
+
+---
+
 ## Open questions to test
 
 - How good is a current top model (Claude Opus 5.5, Gemini 4 Argon, GPT-6 Astra Pro) at writing generator code against a shape language with a block budget? MineBench ratings measure looks, not budget discipline.
@@ -208,3 +235,7 @@ flowchart LR
 - MineCEraft: [arxiv.org/abs/2608.28884](https://arxiv.org/abs/2608.28884)
 - GDMC 2026: [competition page](https://gendesignmc.wikidot.com/wiki:2026-settlement-generation-competition), [Leiden University article](https://www.universiteitleiden.nl/en/news/2026/09/can-ai-build-a-beautiful-city-in-minecraft-these-leiden-students-did-it-better)
 - Baritone settings: [baritone.leijurv.com](https://baritone.leijurv.com/baritone/api/Settings.html), [material list issue](https://github.com/cabaletta/baritone/issues/2990)
+- CRAFT AI: [craftai.world](https://www.craftai.world/)
+- Farm schematics: [litematica.com farm guide](https://litematica.com/farm-schematics/), [iron farm, 26.3](https://mc-schematics.com/s/iron-golem-farm-db530f5fd0), [easy iron farm](https://abfielder.com/Products/ProductDetails.php?id=11536), [compact iron farm](https://abfielder.com/Products/ProductDetails.php?id=12992), [creeper farm](https://abfielder.com/Products/ProductDetails.php?id=10974), [Litematic Hub](https://schematics.base44.app/)
+- Interiors: [Spaleforce houses](https://spaleforce.com/minecraft-house-generator), [Block Dreamer](https://blockdreamer.com/), [SchemForge](https://schemforge.com/), [starter base with smelter and trading hall](https://buildschematics.com/presets/starter-base-with-auto-furnaces-and-trading-hall), [lakehouse](https://mcbuild.org/schematics/18536:lakehouse)
+- Redstone generation: [Lemma Redstone MCP](https://www.npmjs.com/package/lemma-redstone-mcp), [Lemma](https://lemma.ishiakiz.com)
