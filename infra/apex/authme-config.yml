@@ -1,0 +1,19 @@
+# Upload as plugins/AuthMe/config.yml before AuthMe's first start.
+# AuthMe fills in every other setting with its defaults on startup.
+settings:
+  restrictions:
+    # Nobody can register in-game. Accounts are created from the console,
+    # so this is also the whitelist.
+    kickNonRegistered: true
+    AllowRestrictedUser: true
+    AllowedRestrictedUser:
+      # Replace with your Vultr server's public IPv4 address.
+      - Builder;REPLACE_WITH_VULTR_IP
+  registration:
+    dialog:
+      # Mineflayer can't answer login dialogs; it types /login in chat instead.
+      preJoin:
+        enable: false
+      postJoin:
+        enable: false
+  enablePremium: true

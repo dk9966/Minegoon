@@ -41,6 +41,7 @@ runcmd:
   - install -d -m 700 -o minegent -g minegent /home/minegent/.ssh
   - install -m 600 -o minegent -g minegent /root/.ssh/authorized_keys /home/minegent/.ssh/authorized_keys
   - install -d -o minegent -g minegent /opt/minegent
+  - sudo -u minegent git clone https://github.com/dk9966/Minegoon.git /opt/minegent
   - ufw default deny incoming
   - ufw default allow outgoing
   - ufw allow OpenSSH

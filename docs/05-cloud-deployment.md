@@ -38,7 +38,7 @@ The translator plugins (ViaVersion and ViaBackwards) sit on Apex too. They let t
 
 Your dashboard is never exposed to the internet. The cloud machine joins a private network (Tailscale) with your Mac and phone, and only those devices can open it.
 
-What it costs: roughly **$30 to $90 a month** all in, mostly Apex (which you already pay) and model API usage (which you cap).
+What it costs: roughly **$40 to $90 a month** all in, mostly Apex (which you already pay) and model API usage (which you cap).
 
 ```mermaid
 flowchart LR
@@ -69,125 +69,120 @@ flowchart LR
 
 | Account | Why | Cost |
 |---|---|---|
-| Apex Hosting | You have it. Check the plan's RAM and location (see below) | What you pay now |
-| Hetzner **or** Vultr (pick by Apex location) | The always-on agent machine | About €6 to $20 a month |
-| Tailscale (Personal plan; sign in with Google or GitHub) | Private access to the dashboard and SSH | Free (up to 6 users, unlimited devices) |
-| Anthropic Console and/or OpenAI Platform | API keys for the planner and foreman models | Prepaid credits; you set the cap |
-| GitHub | The agent machine pulls this repo | Free |
+| Apex Hosting | You have it. Check the plan's RAM and location | What you pay now |
+| Vultr | The always-on agent machine | $20 a month |
+| Tailscale (Personal plan; sign in with Google or GitHub) | Private access to the machine and, later, the dashboard | Free (up to 6 users, unlimited devices) |
+| Anthropic Console and/or OpenAI Platform | API keys for the planner and foreman models (from Phase 3) | Prepaid credits; you set the cap |
 
-No second Minecraft account. No domain name.
+No second Minecraft account. No domain name. The repo is public, so the machine clones it without a GitHub key.
 
 ### Money
 
 | Item | Monthly | Notes |
 |---|---|---|
 | Apex server | Current plan, maybe +$5 to $10 | The bot is a second player that loads its own chunks when it roams away from you. On less than 6 GB, expect lag during long trips. Apex lists 4 GB at $14.99, 6 GB at about $20, 8 GB at about $25 |
-| Agent machine | €6 (EU) to $20 (US) | 2 vCPUs and 4 GB is comfortable. Hourly billing with a monthly cap on both providers |
+| Vultr machine | $20 | Regular Performance, 2 vCPUs, 4 GB. Billed hourly up to that cap. Turn off Vultr's auto backups (about +$4); nothing on the machine needs them yet |
 | Model APIs | $20 to $50 to start | Both providers are prepaid: buy credits, then the API stops when they run out. Also set a monthly spend limit |
 | Tailscale | $0 | |
-| **Total** | **about $30 to $90** | |
+| **Total** | **about $40 to $90** | |
 
-For scale: the planner and foreman split in `02-how-we-make-it-better.md` is the difference between about $1 and about $93 per dragon run. While developing, loops and bugs are what burn credits, so set the cap before you hand out a key. Turn off auto-reload (OpenAI enables it by default when you first buy credits).
+For scale: the planner and foreman split in `02-how-we-make-it-better.md` is the difference between about $1 and about $93 per dragon run. While developing, loops and bugs are what burn credits, so set the cap before you hand out a key. Turn off auto-reload (OpenAI enables it by default when you first buy credits). The Phase 1 bot makes no model calls, so this can wait until Phase 3.
 
 ### Steps, in order
 
-1. **Find your Apex location.** It's shown in the panel and in the server address. Note your plan's RAM.
-2. **Back up the world.** Apex panel, then Backups, then create one and download it. Offline mode changes how player data is keyed (see "Your player data" below).
-3. **Create the accounts above.** Model providers: buy $20 of credits, set a monthly limit, turn off auto-reload, and create one API key named `minegent`.
-4. **Make an SSH key on your Mac** if you don't have one: `ssh-keygen -t ed25519`. Upload `~/.ssh/id_ed25519.pub` to the provider.
-5. **Create the agent machine** (see "Picking the machine"): Ubuntu 24.04 LTS or newer, your SSH key, and paste `infra/cloud/cloud-init.yaml` into the "user data" / "cloud-init" box. Write down its public IPv4 address.
-6. **Lock the machine down** (see "After first boot").
-7. **Set up Apex** (see "The Apex changes"). You'll need the IPv4 address from step 5.
-8. **Hand off to Phase 1.** On the machine, `git clone` this repo into `/opt/minegent`, then copy `infra/cloud/.env.example` to `/opt/minegent/.env` and fill it in. The hello bot from Phase 1 runs here.
+**On your Mac**
+1. Make an SSH key if you don't have one: `ssh-keygen -t ed25519` (press Enter through the prompts). Show it with `cat ~/.ssh/id_ed25519.pub`.
+2. Download the plugins: from a clone of this repo, run `infra/apex/download-plugins.sh`. It saves four checksum-verified jars in `infra/apex/plugins/`.
+
+**On Vultr** (the machine must exist first, because Apex needs its IP)
+
+3. Sign up at vultr.com and add a payment method.
+4. Account, then SSH Keys, then Add: paste your public key from step 1.
+5. Deploy a server: Shared CPU, Regular Performance, the location from the table below, Ubuntu 24.04 LTS x64, the 2 vCPU / 4 GB plan. Turn off auto backups. Select your SSH key. Under additional features, tick cloud-init user data and paste all of `infra/cloud/cloud-init.yaml`. Hostname `minegent`. Deploy.
+6. Copy the server's IPv4 address. Wait about 5 minutes for first-boot setup to finish.
+
+**On Apex** (backup first)
+
+7. Backups, then create a backup and download it.
+8. Stop the server.
+9. FTP File Access, then `plugins/`: upload the four jars from step 2.
+10. Open `infra/apex/authme-config.yml`, replace `REPLACE_WITH_VULTR_IP` with the IP from step 6, and upload it as `plugins/AuthMe/config.yml` (create the `AuthMe` folder if it isn't there). AuthMe fills in every other setting on startup.
+11. Config Files, then Server Settings: Online Mode to Disabled. Save.
+12. Start the server. In the console, check for `AuthMe ... successfully enabled` and no red errors from ViaVersion, ViaBackwards, or packetevents.
+13. In the console, create both accounts (no slash in the Apex console):
+    `authme register <your name> <your password>` and `authme register Builder <long random password>`.
+14. Join with your normal launcher, type `/login <your password>`, then `/premium`, then rejoin. You shouldn't be asked for a password again.
+15. If your inventory is empty or you lost operator status, follow "Your player data" below.
+
+**On the Vultr machine**
+
+16. `ssh minegent@<vultr-ip>`
+17. `sudo tailscale up --ssh` and open the link it prints to approve the machine. Install Tailscale on your Mac and sign in with the same account.
+18. Check that `ssh minegent@minegent` works over Tailscale, then close public SSH: `sudo ufw delete allow OpenSSH`.
+19. `cd /opt/minegent && cp infra/cloud/.env.example .env && nano .env`: set `MC_HOST` (your Apex address, without the port), `MC_PORT`, and `BOT_PASSWORD` (from step 13). Save with Ctrl+O, Enter, Ctrl+X.
+20. `docker compose up -d --build`, then `docker compose logs -f` until you see `Successful login!`. Ctrl+C stops watching; the bot keeps running.
+
+**In the game**
+
+21. Stand near Builder and type `!come` in chat. It should answer "On my way." and walk to you.
+
+Later updates: `cd /opt/minegent && git pull && docker compose up -d --build`.
 
 ---
 
 ## Zoom in: picking the machine
 
-Put it in or near the same city as your Apex server. The bot reacts to every block update, so a short trip between the two machines matters more than raw speed.
+Put it in the Vultr city closest to your Apex server. The bot reacts to every block update, so a short trip between the two machines matters more than raw speed.
 
-| Apex location | Agent machine | Price |
-|---|---|---|
-| Amsterdam, Frankfurt, London | Hetzner CX23 (2 vCPU, 4 GB), Nuremberg or Falkenstein | €5.99 a month with IPv4 |
-| New York, Vint Hill, Miami, Dallas, San José | Vultr Regular Performance (2 vCPU, 4 GB) in the nearest city | $20 a month |
-| Elsewhere | Vultr in the nearest city | Similar |
+| Apex location | Vultr location |
+|---|---|
+| New York or Vint Hill | New Jersey (New York area) |
+| Miami | Miami |
+| Dallas | Dallas |
+| San José | Silicon Valley |
+| Portland | Seattle |
+| Amsterdam, Frankfurt, London | Amsterdam, Frankfurt, London |
 
 Notes:
-- Hetzner's US servers got much more expensive in June 2026. For a US Apex server, Vultr is the better deal now.
-- Hetzner CX23 is sometimes sold out. CAX11 (ARM, same size, €5.99 plus IPv4) works just as well, since Node, Docker, and Mineflayer all run on ARM.
+- Hetzner's CX23 (about €6) is cheaper, but that line is only sold in Europe. From there to a US Apex server adds roughly 90 to 160 ms, which mostly hurts combat.
 - You need a public IPv4 address (not IPv6 only). AuthMe locks the bot to it.
-- Skip paid provider backups. What matters (the job board and notebook) is one small SQLite file, and we can copy it off nightly.
+- Adding your SSH key in step 4 is not optional. The machine turns off password logins, so without the key you can't get in.
 
 ## Zoom in: after first boot
 
 `infra/cloud/cloud-init.yaml` runs once on first boot. It:
 - creates a `minegent` user that uses your SSH key, then turns off root and password logins
 - installs Docker, Docker Compose, git, sqlite3, and Tailscale
+- clones this repo into `/opt/minegent`
 - adds 2 GB of swap, so a memory spike slows things down instead of killing the bot
 - caps Docker log size, so week-long runs don't fill the disk
 - turns on a firewall that blocks everything incoming except SSH and Tailscale
 
-Give it a few minutes after the machine shows "running," then:
+After steps 17 and 18, the machine accepts no connections from the internet at all. It only makes outgoing ones, to Apex, the model APIs, and GitHub.
 
-```bash
-ssh minegent@<public-ip>
-sudo tailscale up --ssh          # opens a login link; approve it
-```
-
-Install Tailscale on your Mac (and phone if you want), signed into the same account. Check that `ssh minegent@<machine-name>` works over Tailscale, then close public SSH completely:
-
-```bash
-sudo ufw delete allow OpenSSH
-```
-
-From now on the machine accepts no connections from the internet at all. It only makes outgoing ones, to Apex, the model APIs, and GitHub.
-
-One trap for later: Docker publishes ports around the firewall. When the dashboard gets a compose file, bind its port to the Tailscale address or `127.0.0.1`, never to plain `8080:8080`.
+One trap for later: Docker publishes ports around the firewall. When the dashboard gets a port in `compose.yaml`, bind it to the Tailscale address or `127.0.0.1`, never to plain `8080:8080`.
 
 ## Zoom in: the Apex changes
 
-Do these with the server stopped, in this order.
+`infra/apex/download-plugins.sh` fetches these exact builds from Modrinth and checks each against a pinned checksum:
 
-**1. Upload plugins** through FTP File Access into `plugins/`. The built-in Plugin List searches Bukkit and Spigot, and these are best taken straight from their official pages:
-- ViaVersion 5.12.1 and ViaBackwards 5.12.1 ([Hangar](https://hangar.papermc.io/ViaVersion/ViaBackwards))
-- PacketEvents 2.14.0, Spigot build ([Modrinth](https://modrinth.com/plugin/packetevents))
-- AuthMe Reloaded 6.0.1, **the Paper jar** (it now ships one jar per platform) ([GitHub releases](https://github.com/AuthMe/AuthMeReloaded/releases))
+| Plugin | Version | Job |
+|---|---|---|
+| ViaVersion | 5.12.1 | Translation base |
+| ViaBackwards | 5.12.1 | Lets the 26.1 bot join the 26.3 server |
+| PacketEvents | 2.14.0 (Spigot build) | Lets AuthMe verify real accounts with Mojang |
+| AuthMe Reloaded | 6.0.1 (Paper jar; it ships one jar per platform) | Login checks |
 
-**2. Start once, then stop.** That makes AuthMe write `plugins/AuthMe/config.yml`.
+`infra/apex/authme-config.yml` holds the only AuthMe settings we change. AuthMe merges it with its defaults on startup (tested both before AuthMe's first start and over an existing config):
 
-**3. Edit `plugins/AuthMe/config.yml`.** Only these keys change:
+| Setting | Why |
+|---|---|
+| `kickNonRegistered: true` | Only accounts you created from the console can join, so it's also the whitelist. Leave the vanilla whitelist off |
+| `AllowedRestrictedUser: Builder;<ip>` | `Builder` is only accepted from the Vultr machine |
+| `dialog.preJoin` and `postJoin` off | Mineflayer can't answer login dialogs; it types `/login` in chat instead |
+| `enablePremium: true` | Real accounts that ran `/premium` skip the password, checked with Mojang |
 
-```yaml
-settings:
-  restrictions:
-    # Nobody can register in-game. Accounts are created from the console,
-    # so this is also the whitelist.
-    kickNonRegistered: true
-    AllowRestrictedUser: true
-    AllowedRestrictedUser:
-      - Builder;203.0.113.7        # your agent machine's public IPv4
-  registration:
-    dialog:
-      # Mineflayer can't answer login dialogs; it types /login in chat instead.
-      preJoin:
-        enable: false
-      postJoin:
-        enable: false
-  enablePremium: true
-```
-
-**4. Turn on offline mode.** Config Files, then Server Settings, then set Online Mode to Disabled. Leave the vanilla whitelist off; AuthMe replaces it.
-
-**5. Start the server and register both accounts from the console:**
-
-```
-authme register <your name> <your password>
-authme register Builder <long random password>
-```
-
-Join with your normal launcher, `/login <your password>`, then run `/premium` and rejoin. From then on Mojang vouches for you and there's no password prompt. Run `op <your name>` from the console if you lost operator status (see the next section). **Never op the bot.**
-
-**6. Test the lock.** From your Mac, try joining as `Builder` with an offline launcher. AuthMe should kick you, because your IP isn't the machine's.
+**Never op the bot.** To check the lock yourself, try joining as `Builder` from your Mac with an offline launcher. You should be kicked with "You are not the owner of this account."
 
 ### Your player data
 
@@ -203,23 +198,27 @@ If AuthMe's premium mode turns out to keep your Microsoft ID, none of this is ne
 
 ### Apex restarts
 
-Many Apex servers restart on a schedule, and Apex itself occasionally restarts for maintenance. The bot has to treat a disconnect as normal: wait, reconnect, `/login`, and resume from the job board. That reconnect loop is a Phase 1 requirement, not a nice-to-have.
+Many Apex servers restart on a schedule, and Apex itself occasionally restarts for maintenance. The bot treats a disconnect as normal: it waits, reconnects, and logs in again. The wait starts at 5 seconds and doubles up to 5 minutes, and it resets once the bot has stayed connected for a minute.
 
-## Zoom in: how the bot connects
+## Zoom in: the bot (Phase 1)
 
-Same as `03-deployment-strategy.md`, but reading the address from `.env` and logging in after it spawns:
+`packages/body` is the hello bot. It connects with the settings in `.env`, logs in through AuthMe, walks to whoever types `!come`, and reconnects after any disconnect. `compose.yaml` runs it on Node 24 as a non-root user with `restart: unless-stopped`.
 
-```ts
-const bot = mineflayer.createBot({
-  host: process.env.MC_HOST,
-  port: Number(process.env.MC_PORT),
-  username: process.env.BOT_USERNAME,
-  auth: 'offline',
-  version: process.env.MC_VERSION
-})
+One fix that every Mineflayer bot needs on 26.3: since 26.3, the server allows one position update per client tick and only resets that limit when the client sends `tick_end`. Mineflayer 4.39 never sends it, so without a fix every bot is kicked for "invalid player movement" about a second after joining ([mineflayer#4189](https://github.com/PrismarineJS/mineflayer/issues/4189)). `packages/body/src/tickEnd.ts` sends `tick_end` after each movement packet. Remove it once Mineflayer ships its own fix.
 
-bot.once('spawn', () => bot.chat(`/login ${process.env.BOT_PASSWORD}`))
-```
+Tested October 22, 2026 against a local copy of the Apex setup (Paper 26.3, the four plugins above, this AuthMe config, offline mode):
+
+| Check | Result |
+|---|---|
+| Bot joins through ViaBackwards and logs in | Pass |
+| Without the `tick_end` fix | Kicked after about 1 second (vanilla 26.1 server: no kick, so the cause is 26.3's new rule) |
+| `!come` from 12 blocks away | Walked to within 2 blocks |
+| Server restart | Reconnected and logged in again by itself |
+| Process killed | Docker restarted it; logged in again |
+| `docker compose stop` | Clean exit in under a second |
+| `Builder` from a different IP | Kicked: "You are not the owner of this account" |
+| Unregistered name | Kicked: "Only registered users can join" |
+| Premium (`/premium`) login | Not tested: needs a real Microsoft account |
 
 ## Zoom in: running for days
 
@@ -263,7 +262,7 @@ The fallback is the one we've avoided so far: buy a second Java account for the 
 
 - Paper downloads: [papermc.io](https://papermc.io/downloads/paper)
 - Apex: [offline mode guide](https://apexminecrafthosting.com/guides/general/how-to-make-an-offline-minecraft-server/), [plugins and Paper setup](https://apexminecrafthosting.com/guides/general/how-to-make-a-minecraft-smp-server/), [locations and hardware](https://apexminecrafthosting.com/server-specs/)
-- Mineflayer versions: [README](https://cdn.jsdelivr.net/npm/mineflayer@4.39.0/docs/README.md), [26.x issue](https://github.com/PrismarineJS/mineflayer/issues/3893)
+- Mineflayer versions: [README](https://cdn.jsdelivr.net/npm/mineflayer@4.39.0/docs/README.md), [26.x issue](https://github.com/PrismarineJS/mineflayer/issues/3893), [26.3 tick_end kick](https://github.com/PrismarineJS/mineflayer/issues/4189)
 - ViaBackwards 5.12.1: [Hangar](https://hangar.papermc.io/ViaVersion/ViaBackwards/versions/5.12.1)
 - AuthMe: [releases](https://github.com/AuthMe/AuthMeReloaded/releases), [config reference](https://github.com/AuthMe/AuthMeReloaded/blob/master/docs/config.md)
 - PacketEvents 2.14.0: [release notes](https://packetevents.com/blog/release-2-14-0/)
