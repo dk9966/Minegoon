@@ -67,6 +67,12 @@ public final class Bestiary {
      * knock it back, and only a couple can stand in reach at once.
      */
     private static final double KNOCKED_BACK = 0.5;
+    /**
+     * The part of a blast a lone creeper lands on average. Hit once and backed
+     * away from, it rarely lights in reach; backing off a stalking one only
+     * brings it back, while others around make the back-off step go wrong.
+     */
+    private static final double LONE_CREEPER = 0.15;
     /** Spiders leave a player alone in light at least this bright. */
     private static final int SPIDER_CALM_LIGHT = 12;
     /** Damage and attacks per second for each weapon the fighter swings. */
@@ -252,7 +258,7 @@ public final class Bestiary {
             }
             clock += foe.health() / Math.max(0.5, self.dps()) + 1;
             taken += switch (kind.tactic()) {
-                case EXPLODES -> kind.damage() * (shield ? 0.1 : 0.35);
+                case EXPLODES -> kind.damage() * (shield ? 0.1 : foes.size() == 1 ? LONE_CREEPER : 0.35);
                 case RANGED -> kind.dps() * clock;
                 default -> kind.dps() * KNOCKED_BACK * clock;
             };

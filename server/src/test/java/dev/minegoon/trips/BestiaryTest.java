@@ -58,6 +58,14 @@ class BestiaryTest {
         assertTrue(Bestiary.wins(hurt, two, true));
     }
 
+    @Test
+    void aLoneCreeperIsFoughtWithASwordButNotHalfDead() {
+        Strength stoneSword = new Strength(5 * 1.6, 12);
+        assertTrue(Bestiary.wins(stoneSword, List.of(foe(EntityType.CREEPER)), false));
+        assertFalse(Bestiary.wins(new Strength(5 * 1.6, 6), List.of(foe(EntityType.CREEPER)), false));
+        assertFalse(Bestiary.wins(stoneSword, List.of(foe(EntityType.CREEPER), foe(EntityType.SKELETON)), false));
+    }
+
     private static Foe foe(EntityType type) {
         Bestiary.Kind kind = Bestiary.of(type);
         return new Foe(kind, kind.health());
