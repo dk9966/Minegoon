@@ -455,5 +455,6 @@ What the tries showed. Times are seconds since the ask.
 | 15 | cave at y=54, night 1 | 0 | The hunt found no animals after 8 places and gave up. With no food it dug in. |
 | 16 | heading down at night 1 | 1, creeper | The cook step failed on half the meat, the replan packed again, and it hunted in the dark. |
 | 17 | iron search, 2000 s | 1, creeper | Reached a stone pickaxe and the iron search by 700 s. It found no way down deeper than y=63 in 600 blocks of walking, and died in the second night while backing off from a group. |
+| 19 | iron search, 2100 s | 2, zombie then creeper | With the sight checks shared out between heights it walked to cave mouths, but every one in sight was shallow (y=63 to 79). Night 1 cost two minutes of backing off one creeper 33 times. In the second night a zombie killed it mid-fight, then a creeper killed it just after respawning with nothing to fight with. |
 
 The surface now takes about 10 minutes: logs, a wooden pickaxe, cobblestone from a cave mouth, swords, a stone pickaxe, and some meat. What is still missing is a way down. On this seed the openings in sight near spawn are shallow, so the iron search walks the surface for 20 minutes or more.
