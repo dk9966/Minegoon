@@ -120,6 +120,8 @@ public final class Foreman {
     private boolean rearming;
     private boolean bedding;
     private boolean sheltered;
+    /** Tonight it chose the caves over waiting up top, so packing up top is not started again. */
+    private boolean headedDown;
 
     public Foreman(Body body, JobBoard board, MissionBoard missions, Inspector inspector, Planner planner, Crew crew,
                    Tutor tutor, Zones zones, Results results, Database db, Logger log) {
@@ -437,6 +439,7 @@ public final class Foreman {
         rearming = false;
         bedding = false;
         sheltered = false;
+        headedDown = false;
         supplied.clear();
         upgraded.clear();
         packed.clear();
@@ -528,6 +531,9 @@ public final class Foreman {
      * it digs in until morning. Once a night.
      */
     private boolean shelter(Task task) {
+        if (!crew.sleeper().night()) {
+            headedDown = false;
+        }
         if (!crew.sleeper().nightOnSurface()) {
             sheltered = false;
             return false;
@@ -584,7 +590,20 @@ public final class Foreman {
             return false;
         }
         hunts.forEach(board::complete);
+        Map<Material, Integer> held = body.main().call(this::inventory);
+        for (Job job : unfinished(task.id())) {
+            if (packingJobs.contains(job.id()) && job.step() instanceof Step.Smelt smelt
+                && smelt.output().members().stream().allMatch(Material::isEdible)) {
+                int raw = smelt.input().members().stream().mapToInt(item -> held.getOrDefault(item, 0)).sum();
+                board.complete(job);
+                if (raw > 0) {
+                    board.addFront(task.id(), new Step.Smelt(smelt.input(), smelt.output(), raw));
+                    unfinished(task.id()).stream().findFirst().ifPresent(cook -> packingJobs.add(cook.id()));
+                }
+            }
+        }
         replanBehindPacking(task, goal);
+        headedDown = true;
         say("It's night up here" + (hunts.isEmpty() ? ", and" : ". I have some food, and")
             + " the rest of the job is down in the caves, so I'll head down now instead of waiting out the night.");
         return true;
@@ -959,7 +978,7 @@ public final class Foreman {
      * false only if no plan exists even then.
      */
     private boolean replan(long taskId, Set<String> avoid) {
-        if (underOpenSky()) {
+        if (underOpenSky() && !headedDown) {
             packed.remove(taskId);
         }
         try {
