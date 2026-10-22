@@ -9,6 +9,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import dev.minegoon.world.Blocks;
 import org.bukkit.Material;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -39,7 +41,7 @@ public final class Retreat implements Checkpoint {
         Material.COBBLESTONE, Material.COBBLED_DEEPSLATE,
         Material.ROTTEN_FLESH, Material.POISONOUS_POTATO, Material.SPIDER_EYE);
 
-    public enum Reason { HUNGRY, FULL, TOOL }
+    public enum Reason { HUNGRY, FULL, TOOL, NIGHT }
 
     public static final class Needed extends RuntimeException {
         private final Reason reason;
@@ -57,6 +59,7 @@ public final class Retreat implements Checkpoint {
     private final MainThread main;
     private final Helper helper;
     private final Fighter fighter;
+    private volatile boolean nightCovered;
     private volatile Set<Material> keep = Set.of();
     private volatile boolean spendingLastTool;
 
@@ -154,11 +157,19 @@ public final class Retreat implements Checkpoint {
         });
     }
 
+    /** Tonight is taken care of: the helper is dug in or asleep, or chose to carry on. */
+    public void nightCovered() {
+        nightCovered = true;
+    }
+
     private void steady(boolean hungerIsFine) {
         fighter.defend();
         heal(hungerIsFine);
         if (!hungerIsFine && main.call(this::starving)) {
             throw new Needed(Reason.HUNGRY, "I ran out of food");
+        }
+        if (!hungerIsFine && main.call(this::exposed)) {
+            throw new Needed(Reason.NIGHT, "It's getting dark and I have no armor");
         }
         if (main.call(this::stillFull)) {
             throw new Needed(Reason.FULL, "my inventory is full of things I need");
@@ -229,6 +240,22 @@ public final class Retreat implements Checkpoint {
     private double health() {
         Player player = helper.player();
         return player == null || player.isDead() ? Double.MAX_VALUE : player.getHealth();
+    }
+
+    /**
+     * Night under the open sky with no armor. Out there mobs spawn on every
+     * dark patch of ground and come from all sides, more than a bare body
+     * outlasts.
+     */
+    private boolean exposed() {
+        Player player = helper.player();
+        if (player == null || player.isDead() || !Sleeper.nightNow(player)) {
+            nightCovered = false;
+            return false;
+        }
+        AttributeInstance armor = player.getAttribute(Attribute.ARMOR);
+        return !nightCovered && (armor == null || armor.getValue() < 1)
+            && player.getEyeLocation().getBlock().getLightFromSky() > 0;
     }
 
     private boolean starving() {

@@ -41,6 +41,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Tag;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Recipe;
@@ -517,21 +519,44 @@ public final class Foreman {
     }
 
     /**
-     * Night in the open with nothing to fight with, as just after a respawn: dig
-     * in until morning rather than die again in the dark. Once a night.
+     * Night in the open with no armor, or nothing to fight with, as just after
+     * a respawn: mobs come from every side up here, more than a bare body
+     * outlasts. A bed it has or can make on the spot skips the night; otherwise
+     * it digs in until morning. Once a night.
      */
     private boolean shelter(Task task) {
         if (!crew.sleeper().nightOnSurface()) {
             sheltered = false;
             return false;
         }
-        if (sheltered || hasWeapon()) {
+        if (sheltered || hasWeapon() && armored()) {
             return false;
         }
         sheltered = true;
-        say("It's night and I have nothing to fight with, so I'll dig in until morning.");
+        crew.retreat().nightCovered();
+        if (crew.sleeper().hasBed()) {
+            say("It's night up here. I'll sleep and pick this up in the morning.");
+            board.addFront(task.id(), new Step.Sleep());
+            return true;
+        }
+        List<Step> bed = provision(ItemSet.of(Material.WHITE_BED), 1);
+        if (bed != null && bed.stream().noneMatch(Foreman::inTheWorld)) {
+            bed.add(new Step.Sleep());
+            say("It's night up here. I'll make a bed and sleep.");
+            board.addAllFront(task.id(), bed);
+            return true;
+        }
+        say("It's night and I have " + (hasWeapon() ? "no armor" : "nothing to fight with")
+            + ", so I'll dig in until morning.");
         board.addFront(task.id(), new Step.Shelter());
         return true;
+    }
+
+    private boolean armored() {
+        return body.main().call(() -> {
+            AttributeInstance armor = body.player().getAttribute(Attribute.ARMOR);
+            return armor != null && armor.getValue() >= 1;
+        });
     }
 
     /**
@@ -786,6 +811,11 @@ public final class Foreman {
                 yield true;
             }
             case TOOL -> true;
+            case NIGHT -> {
+                crew.retreat().nightCovered();
+                shelter(task);
+                yield true;
+            }
             case FULL -> {
                 comeBack(task, needed.getMessage());
                 yield false;

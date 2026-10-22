@@ -131,7 +131,7 @@ trips:
     copper_sword|stone_sword|iron_sword|diamond_sword|netherite_sword: 1
     shield: 1
     water_bucket: 1
-    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken^: [4, 0.1]
+    cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken^: [3, 0.1]
     cobblestone|cobbled_deepslate: 48
     oak_log|spruce_log|birch_log|jungle_log|acacia_log|dark_oak_log|mangrove_log|cherry_log|pale_oak_log^: 3
 

@@ -11,7 +11,9 @@ read back afterwards.
     python3 scripts/armor_runs.py
 
 TIMEOUT is the seconds allowed for one try (default 3600). TRIES is how many
-tries to run (default 3). The goal is a finish inside 40 minutes.
+tries to run (default 3). FRESH=0 keeps the world as earlier tries left it;
+by default each try regenerates it from the seed. The goal is a finish inside
+40 minutes.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ RESULTS = DATA / "plugins" / "Minegoon" / "results.jsonl"
 OUT = ROOT / "scripts" / "results" / "armor"
 TIMEOUT = int(os.environ.get("TIMEOUT", "3600"))
 TRIES = int(os.environ.get("TRIES", "3"))
+FRESH = os.environ.get("FRESH", "1") == "1"
 POLL = 10
 PIECES = ("diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots")
 ASK = "get a full set of diamond armor"
@@ -87,8 +90,20 @@ def point(started: float) -> dict | None:
             "health": int(health), "food": int(food), "mobs": mobs.strip(), "status": status[:240]}
 
 
+def fresh_world() -> None:
+    """The same seed, regenerated: animals eaten and caves walked by earlier tries come back."""
+    say("  regenerating the world from the seed")
+    subprocess.run(["sudo", "docker", "stop", "minegoon-practice"], check=True, capture_output=True)
+    subprocess.run(["sudo", "rm", "-rf", str(DATA / "world")], check=True)
+    subprocess.run(["sudo", "docker", "start", "minegoon-practice"], check=True, capture_output=True)
+    time.sleep(20)
+    wait_ready()
+
+
 def run_once(number: int) -> dict:
-    say(f"--- try {number}: reset, empty hands, ask ---")
+    say(f"--- try {number}: fresh world, reset, empty hands, ask ---")
+    if FRESH:
+        fresh_world()
     rcon("minegoon", "reset")
     rcon("time", "set", "day")
     before = len(lines())

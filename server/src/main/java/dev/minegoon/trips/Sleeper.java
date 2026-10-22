@@ -183,7 +183,7 @@ public final class Sleeper {
         return null;
     }
 
-    private static boolean nightNow(Player player) {
+    static boolean nightNow(Player player) {
         if (player == null) {
             return false;
         }
