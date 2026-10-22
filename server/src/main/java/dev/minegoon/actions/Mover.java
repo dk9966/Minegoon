@@ -191,7 +191,7 @@ public final class Mover {
                 player.getFoodLevel() > 6);
             return new Means(Digging.of(player, body.policy()), kit);
         });
-        return Pathfinder.find(Terrain.of(view, executor.closing(means.digging())), means.kit(), start, goal, favored,
+        return Pathfinder.find(executor.untrusting(Terrain.of(view, executor.closing(means.digging()))), means.kit(), start, goal, favored,
             SEARCH_MILLIS);
     }
 

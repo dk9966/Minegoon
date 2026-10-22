@@ -15,11 +15,13 @@ import dev.minegoon.world.BlockReader;
 import dev.minegoon.world.Clearance;
 import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
+import dev.minegoon.world.Terrain;
 import dev.minegoon.world.Traits;
 import dev.minegoon.world.path.Move;
 import dev.minegoon.world.path.Path;
 import dev.minegoon.world.path.Step;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
@@ -48,6 +50,8 @@ public final class PathExecutor {
     private static final double OFF_ROUTE_FAR = 3;
     private static final int STEP_SLACK = 100;
     private static final int MAX_DIGS = 12;
+    private static final int FLAKY_FAILS = 2;
+    private static final int MAX_UNTRUSTED = 512;
     /** Closer than this to the centre, the 0.6-wide body is wholly inside its column, so nothing beside it catches it going up or down. */
     private static final double CENTERED = 0.15;
     private static final double ARRIVED = 0.1;
@@ -87,6 +91,8 @@ public final class PathExecutor {
     private final Placer placer;
     /** Cells the live world would not let a route open, though the snapshot it was planned on did. */
     private final Set<Pos> refused = ConcurrentHashMap.newKeySet();
+    private final Set<Pos> untrusted = ConcurrentHashMap.newKeySet();
+    private final Map<Pos, Integer> failures = new ConcurrentHashMap<>();
 
     public PathExecutor(Body body, Miner miner, Placer placer) {
         this.body = body;
@@ -100,9 +106,42 @@ public final class PathExecutor {
             ? Clearance.IMPOSSIBLE : digging.cost(world, x, y, z);
     }
 
-    /** Forgets the refused cells, for a walk somewhere new. */
+    /** {@code terrain}, with every untrusted cell read as unknown, which no route enters or stands on. */
+    public Terrain untrusting(Terrain terrain) {
+        return new Terrain() {
+            @Override
+            public int traits(int x, int y, int z) {
+                return !untrusted.isEmpty() && untrusted.contains(new Pos(x, y, z))
+                    ? Traits.UNKNOWN : terrain.traits(x, y, z);
+            }
+
+            @Override
+            public double breakTicks(int x, int y, int z) {
+                return terrain.breakTicks(x, y, z);
+            }
+
+            @Override
+            public BlockReader blocks() {
+                return terrain.blocks();
+            }
+        };
+    }
+
+    /** Forgets the refused cells, for a walk somewhere new. Untrusted cells stay closed. */
     public void reopen() {
         refused.clear();
+    }
+
+    /**
+     * A step into this cell failed again: the body slid off a leaf edge, caught
+     * on a vine, or bounced back, the same way each time a route is planned
+     * through it. Closed for good after {@link #FLAKY_FAILS}, so the next route
+     * finds another way instead of retrying it forever.
+     */
+    private void flaky(Pos cell) {
+        if (failures.merge(cell, 1, Integer::sum) >= FLAKY_FAILS && untrusted.size() < MAX_UNTRUSTED) {
+            untrusted.add(cell);
+        }
     }
 
     /**
@@ -193,6 +232,7 @@ public final class PathExecutor {
             if (sync(feet)) {
                 offRoute = 0;
             } else if (++offRoute > OFF_ROUTE_TICKS || away(at) > OFF_ROUTE_FAR) {
+                flaky(steps.get(index).to());
                 return new Failed("off the route on " + steps.get(index) + ", " + state(player));
             }
             while (finished(steps.get(index), next(index), feet, at, player)) {
@@ -203,6 +243,7 @@ public final class PathExecutor {
             }
             step = steps.get(index);
             if (++stepTicks > steps.get(furthest).cost() + STEP_SLACK) {
+                flaky(step.to());
                 return new Failed("too long on " + step + ", " + state(player));
             }
             Order prepared = prepare(step, feet, at, player);
