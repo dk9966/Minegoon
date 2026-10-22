@@ -192,7 +192,8 @@ public final class Cookbook {
                 yield new Craft(output, List.of(new Ingredient(anyInput, first.ingredients().getFirst().count())),
                     first.yield(), first.needsTable(), recipes);
             }
-            case Smelt first -> null;
+            case Smelt first -> new Smelt(output,
+                alike.stream().map(way -> ((Smelt) way).input()).reduce(ItemSet::union).orElseThrow());
             case Grow grow -> null;
             case Fill fill -> null;
         };
@@ -203,6 +204,7 @@ public final class Cookbook {
         return switch (way) {
             case Mine mine -> mine.ripe() ? "ripe" : Mine.class;
             case Hunt hunt -> Hunt.class;
+            case Smelt smelt -> Smelt.class;
             case Craft craft when craft.ingredients().size() == 1 ->
                 List.of(craft.yield(), craft.needsTable(), craft.ingredients().getFirst().count());
             default -> NO_SHAPE;
