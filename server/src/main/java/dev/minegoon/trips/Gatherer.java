@@ -291,7 +291,11 @@ public final class Gatherer {
             }
             boolean killed = body.main().call(() -> {
                 Player player = body.player();
-                if (!(Bukkit.getEntity(id) instanceof LivingEntity prey) || player.getAttackCooldown() < 0.9f) {
+                Material held = player.getInventory().getItemInMainHand().getType();
+                Fighter.wield(player);
+                boolean swapped = player.getInventory().getItemInMainHand().getType() != held;
+                if (!(Bukkit.getEntity(id) instanceof LivingEntity prey) || swapped
+                    || player.getAttackCooldown() < 0.9f) {
                     return false;
                 }
                 Look.at(player, prey.getEyeLocation());

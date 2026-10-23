@@ -652,13 +652,19 @@ public final class Fighter {
         }
     }
 
-    /** The best weapon in hand and a shield in the off hand, if the helper has them. */
-    private static void arm(Player self) {
+    /** The best sword or axe carried, into the main hand. False when it carries none. Main thread. */
+    public static boolean wield(Player self) {
         for (Material weapon : WEAPONS) {
             if (Hands.hold(self, weapon)) {
-                break;
+                return true;
             }
         }
+        return false;
+    }
+
+    /** The best weapon in hand and a shield in the off hand, if the helper has them. */
+    private static void arm(Player self) {
+        wield(self);
         PlayerInventory inventory = self.getInventory();
         if (inventory.getItemInOffHand().getType() == Material.SHIELD) {
             return;
