@@ -68,8 +68,8 @@ public final class OpenRouter implements ModelClient {
     public ToolCall pick(String model, String system, String briefing, JsonArray tools) throws IOException {
         JsonObject body = body(model, system, briefing);
         body.add("tools", tools);
-        body.addProperty("tool_choice", "required");
-        body.addProperty("parallel_tool_calls", false);
+        // Claude Opus on OpenRouter refuses "required", and Gemini Flash refuses parallel_tool_calls.
+        body.addProperty("tool_choice", "auto");
         return send(body, answer -> {
             JsonObject function = reply(answer).getAsJsonArray("tool_calls").get(0).getAsJsonObject()
                 .getAsJsonObject("function");
@@ -86,7 +86,6 @@ public final class OpenRouter implements ModelClient {
         body.add("models", gson.toJsonTree(List.of(model, fallbackModel)));
         body.add("messages", messages(system, user));
         body.add("provider", provider);
-        body.addProperty("temperature", 0);
         return body;
     }
 
