@@ -57,6 +57,21 @@ public final class Prospector {
     /** How far sideways a way down seen before is worth walking back to. */
     private static final int OPENING_WITHIN = 160;
     private static final int DRY_PASSES = 2;
+    /**
+     * A search for something that is best below this height needs a big cave
+     * or a deep ravine. Near spawn the cave mouths can all be shallow, so it
+     * walks further each time and keeps going longer before it gives up.
+     */
+    private static final int DEEP_BEST = 0;
+    private static final int DEEP_FRONTIER = 96;
+    private static final int DEEP_DRY_PASSES = 8;
+    /** Ground this far above the feet is a mountain, where ravines and cave mouths cut deepest. */
+    private static final int MOUNTAIN_ABOVE = 20;
+    /** How much one mountain sample in a direction weighs against one unseen chunk there. */
+    private static final int MOUNTAIN_PULL = 2;
+    private static final Set<String> MOUNTAINS = Set.of("jagged_peaks", "frozen_peaks", "stony_peaks",
+        "snowy_slopes", "grove", "meadow", "cherry_grove", "windswept_hills", "windswept_gravelly_hills",
+        "windswept_forest", "windswept_savanna");
     /** The knowledge entry for ground a seed can be planted in. */
     public static final String SOIL = "soil";
 
@@ -204,7 +219,7 @@ public final class Prospector {
          * move came up empty {@link #DRY_PASSES} times in a row.
          */
         public void next(Checkpoint checkpoint) {
-            if (dryPasses >= DRY_PASSES) {
+            if (dryPasses >= (deep() ? DEEP_DRY_PASSES : DRY_PASSES)) {
                 dryPasses = 0;
                 throw new Dry("I found no " + what + " after looking from " + places + " places");
             }
@@ -227,12 +242,16 @@ public final class Prospector {
                 movesOnRung = 0;
                 return;
             }
-            frontier(checkpoint);
+            frontier(checkpoint, deep());
             log.info(who + " looking for " + what + ": new ground at " + mover.feet());
             places++;
             dryPasses++;
             rung = 0;
             movesOnRung = 0;
+        }
+
+        private boolean deep() {
+            return find.best() != null && find.best() < DEEP_BEST;
         }
 
         private int limit(Way way) {
@@ -424,11 +443,15 @@ public final class Prospector {
      * walk gets anywhere, out to the surface, by stairs only if nothing else
      * works: being shut in is never a reason to stay. Not {@link Dry}: the thing
      * may be out there, the helper just cannot move, and nobody's advice changes that.
+     * A {@code deep} search on the surface walks twice as far and leans toward
+     * mountains in sight.
      */
-    private void frontier(Checkpoint checkpoint) {
+    private void frontier(Checkpoint checkpoint, boolean deep) {
         Pos feet = mover.feet();
         int surface = surface(feet);
         boolean buried = surface - feet.y() > BURIED;
+        boolean far = deep && !buried;
+        int[] pull = far ? mountains(feet) : new int[COMPASS.length];
         boolean digging = orders.ways().contains(Way.DIG) && tunneler.armed();
         if (buried && digging) {
             tunneler.turn();
@@ -440,11 +463,12 @@ public final class Prospector {
         for (int i = 0; i < COMPASS.length; i++) {
             order.add(i);
         }
-        order.sort((a, b) -> Integer.compare(unseen(feet, b) + (b == heading ? 1 : 0),
-            unseen(feet, a) + (a == heading ? 1 : 0)));
+        order.sort((a, b) -> Integer.compare(unseen(feet, b) + MOUNTAIN_PULL * pull[b] + (b == heading ? 1 : 0),
+            unseen(feet, a) + MOUNTAIN_PULL * pull[a] + (a == heading ? 1 : 0)));
+        int reach = far ? DEEP_FRONTIER : FRONTIER;
         for (int direction : order) {
             int[] step = COMPASS[direction];
-            int distance = step[0] != 0 && step[1] != 0 ? (int) Math.round(FRONTIER * Math.sqrt(2)) : FRONTIER;
+            int distance = step[0] != 0 && step[1] != 0 ? (int) Math.round(reach * Math.sqrt(2)) : reach;
             if (mover.walk(Goal.away(feet, step[0], step[1], distance), checkpoint)) {
                 heading = direction;
                 remember();
@@ -487,6 +511,32 @@ public final class Prospector {
 
     private static boolean earth(Material type) {
         return type.isSolid() && !Tag.LEAVES.isTagged(type) && !Tag.LOGS.isTagged(type);
+    }
+
+    /**
+     * For each compass direction, the ground samples in sight that way that
+     * are mountain: a mountain biome, or well above the feet.
+     */
+    private int[] mountains(Pos feet) {
+        int[] count = new int[COMPASS.length];
+        for (Vision.Patch patch : vision.patches()) {
+            Pos at = patch.at();
+            int dx = at.x() - feet.x();
+            int dz = at.z() - feet.z();
+            if (dx == 0 && dz == 0) {
+                continue;
+            }
+            if (MOUNTAINS.contains(patch.biome()) || at.y() >= feet.y() + MOUNTAIN_ABOVE) {
+                count[compass(dx, dz)]++;
+            }
+        }
+        return count;
+    }
+
+    /** The {@link #COMPASS} direction nearest to an offset. */
+    static int compass(int dx, int dz) {
+        double turns = Math.atan2(dz, dx) / (2 * Math.PI);
+        return Math.floorMod((int) Math.round(turns * COMPASS.length), COMPASS.length);
     }
 
     /** Chunks in a direction, out past what is in sight now, that the helper has not looked at. */
