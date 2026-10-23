@@ -72,6 +72,7 @@ public final class FrontDesk {
     public void hear(Speaker speaker, String text) {
         Optional<Mission> mission = missions.current();
         ToolCall call;
+        fires.calling(false, "desk", deskModel);
         try {
             call = model.pick(deskModel, SYSTEM.formatted(helperName), briefing(speaker, text, mission),
                 toolbox.specs());

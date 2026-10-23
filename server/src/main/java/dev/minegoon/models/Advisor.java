@@ -97,6 +97,7 @@ public final class Advisor {
             return Optional.empty();
         }
         try {
+            fires.calling(false, "advice", model);
             ModelClient.Answer answer = router.ask(model, JUDGE, gap.briefing(), "verdict", verdictSchema(structures));
             fires.fired(false, "advice", model, answer.usage(), "verdict");
             JsonObject body = answer.body();
@@ -115,6 +116,7 @@ public final class Advisor {
             return Optional.empty();
         }
         try {
+            fires.calling(false, "advice", model);
             ModelClient.Answer answer = router.ask(model, SYSTEM, gap.briefing(), "lesson", schema(structures));
             fires.fired(false, "advice", model, answer.usage(), "lesson");
             JsonObject body = answer.body();

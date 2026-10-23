@@ -142,6 +142,7 @@ public final class MissionRunner {
         String chosen = strong ? agent.plannerModel() : agent.deskModel();
         String role = strong ? "planner" : "desk";
         boolean planning = mission.plan() == null;
+        fires.calling(strong, role, chosen);
         ToolCall call = pick(mission, chosen, planning ? toolbox.specs(PLANNING) : toolbox.specs());
         if (call == null) {
             return false;

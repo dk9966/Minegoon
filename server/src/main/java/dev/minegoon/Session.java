@@ -386,7 +386,7 @@ public final class Session {
             fighter,
             prospector);
         results = new Results(folder.resolve("results.jsonl"));
-        ModelFires fires = new ModelFires(results::modelFire, log);
+        ModelFires fires = new ModelFires(results::modelFire, log, helper::say);
         Tutor tutor = new Tutor(knowledge, shared.lessons(),
             new Advisor(shared.router(), settings.adviceModel(), log, fires), vision, structures, main,
             helper::player, Names::biome, log);
