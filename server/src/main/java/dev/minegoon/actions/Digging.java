@@ -21,8 +21,15 @@ public final class Digging implements Clearance {
     private static final ItemStack BARE_HAND = ItemStack.empty();
     /** Blocks at least this hard are rock: a route goes round them through open caves when it can. */
     private static final float ROCK = 1;
-    /** About ten blocks of sprinting, so a walk only digs rock where going round is much longer. */
-    private static final double ROCK_DETOUR = 36;
+    /**
+     * About fifty blocks of sprinting for each block of rock, so a walk does
+     * not turn into a tunnel or a shaft: it digs only a notch where going
+     * round is very much longer, such as out of a pit.
+     */
+    private static final double ROCK_DETOUR = 180;
+    /** Dirt, sand and gravel: soft, but a run of them dug out is still a tunnel through a hill. */
+    private static final float EARTH = 0.5f;
+    private static final double EARTH_DETOUR = 40;
 
     private final List<ItemStack> tools;
     private final BreakPolicy policy;
@@ -52,7 +59,8 @@ public final class Digging implements Clearance {
             for (ItemStack tool : tools) {
                 best = Math.min(best, ticks(data, tool));
             }
-            return data.getMaterial().getHardness() >= ROCK ? best * 2 + ROCK_DETOUR : best;
+            float hardness = data.getMaterial().getHardness();
+            return hardness >= ROCK ? best * 2 + ROCK_DETOUR : hardness >= EARTH ? best + EARTH_DETOUR : best;
         });
     }
 

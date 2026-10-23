@@ -33,7 +33,8 @@ class KnowledgeTest {
     void oresAreFoundInCavesNotByStripMining() throws IOException {
         Knowledge knowledge = shipped();
         for (String ore : List.of("coal_ore", "copper_ore", "iron_ore", "lapis_ore", "gold_ore", "redstone_ore",
-                "diamond_ore", "emerald_ore", "amethyst_cluster")) {
+                "diamond_ore", "emerald_ore", "amethyst_cluster", "stone", "deepslate", "granite", "diorite", "andesite",
+                "tuff")) {
             assertFalse(knowledge.find(List.of(ore)).ways().contains(Way.DIG), ore);
         }
     }

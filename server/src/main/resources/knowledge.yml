@@ -45,12 +45,12 @@ find:
     biomes: [meadow, cherry_grove, grove, snowy_slopes, jagged_peaks, frozen_peaks, stony_peaks,
              windswept_hills, windswept_gravelly_hills, windswept_forest]
 
-  stone:        {y: [-64, 320], best: 40, ways: [cliff, cave, dig]}
-  deepslate:    {y: [-64, 8],   best: -8, ways: [cave, dig]}
-  granite:      {ways: [cliff, dig]}
-  diorite:      {ways: [cliff, dig]}
-  andesite:     {ways: [cliff, dig]}
-  tuff:         {y: [-64, 16], best: -20, ways: [cave, dig]}
+  stone:        {y: [-64, 320], best: 40, ways: [cliff, cave, cavern]}
+  deepslate:    {y: [-64, 8],   best: -8, ways: [cave, cavern]}
+  granite:      {ways: [cliff, cave]}
+  diorite:      {ways: [cliff, cave]}
+  andesite:     {ways: [cliff, cave]}
+  tuff:         {y: [-64, 16], best: -20, ways: [cave, cavern]}
   calcite:      {ways: [roam, peak, cave], biomes: [stony_peaks]}
   # Geodes are hidden in stone, but most have a crack, and caves and ravines cut through them.
   amethyst_cluster: {y: [-58, 30], best: -14, ways: [visit, cave, cavern, peak], visit: [geode], trip: deep}
