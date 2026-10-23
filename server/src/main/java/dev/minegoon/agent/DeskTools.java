@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public final class DeskTools {
 
     static final List<String> COMMANDS = List.of("come", "give", "stop", "pause", "resume", "protect", "allow",
-        "watch", "chase", "back");
+        "watch", "chase", "free", "back");
 
     private final Commands commands;
     private final Foreman foreman;
@@ -56,7 +56,8 @@ public final class DeskTools {
             stop: drop all work. pause and resume. protect: never dig within radius blocks of the speaker. \
             allow: may dig player-made blocks within radius for the current task. watch: let the speaker see \
             through the helper's eyes. chase: carry the speaker's camera behind and above the helper, in third \
-            person. back: end watching.""", """
+            person. free: stop following but stay in spectator where the camera is. back: end watching and \
+            return the speaker to where they started.""", """
             {"type": "object", "properties": {
               "name": {"type": "string", "enum": [%s]},
               "radius": {"type": "integer", "minimum": 1, "maximum": 128, "description": "For protect and allow"}

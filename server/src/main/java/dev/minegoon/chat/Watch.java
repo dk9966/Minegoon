@@ -15,6 +15,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
@@ -22,8 +23,9 @@ import org.bukkit.util.Vector;
 /**
  * Opt-in spectator follow. A player says watch and sees through the helper's
  * eyes, including underground, or says chase and is carried along behind and
- * above it, looking at it. back puts them where they were, in the game mode
- * they had. Nothing pulls a player in on its own.
+ * above it, looking at it. free, or sneaking, lets go of the helper and leaves
+ * them in spectator where the camera was. back puts them where they were before
+ * any of it, in the game mode they had. Nothing pulls a player in on its own.
  *
  * <p>The chase view spectates an invisible armor stand that the server moves.
  * The client glides an entity between the places it is sent to, but jumps a
@@ -51,7 +53,7 @@ public final class Watch implements Listener {
     private final Helper helper;
     private final Map<UUID, Seat> seats = new ConcurrentHashMap<>();
 
-    private enum View { EYES, CHASE }
+    private enum View { EYES, CHASE, FREE }
 
     private static final class Seat {
         final Location returnTo;
@@ -75,11 +77,13 @@ public final class Watch implements Listener {
     }
 
     public void start(UUID id) {
-        sit(id, View.EYES, "You're watching through my eyes. Say chase to see me from behind, or back to return.");
+        sit(id, View.EYES, "You're watching through my eyes. Say chase to see me from behind, sneak or say free to "
+            + "stop and look around there, or say back to return.");
     }
 
     public void chase(UUID id) {
-        sit(id, View.CHASE, "You're following me from behind. Say watch to see through my eyes, or back to return.");
+        sit(id, View.CHASE, "You're following me from behind. Sneak or say free to stop and look around there, "
+            + "or say back to return.");
     }
 
     private void sit(UUID id, View view, String message) {
@@ -101,6 +105,43 @@ public final class Watch implements Listener {
             follow(player, seat);
             tell(player, message);
         });
+    }
+
+    /** Lets go of the helper, staying in spectator where the camera is now. */
+    public void free(UUID id) {
+        onMain(() -> {
+            Player player = player(id);
+            if (player == null) {
+                return;
+            }
+            Seat seat = seats.get(player.getUniqueId());
+            if (seat == null || seat.view == View.FREE) {
+                tell(player, "You're not following me. Say chase or watch to follow me.");
+                return;
+            }
+            letGo(player, seat);
+        });
+    }
+
+    /** Sneaking is how the game stops spectating, so it lets go here too instead of being undone next tick. */
+    @EventHandler
+    public void onSneak(PlayerToggleSneakEvent event) {
+        Seat seat = seats.get(event.getPlayer().getUniqueId());
+        if (event.isSneaking() && seat != null && seat.view != View.FREE) {
+            letGo(event.getPlayer(), seat);
+        }
+    }
+
+    private void letGo(Player player, Seat seat) {
+        Location here = seat.view == View.CHASE && seat.camera != null
+            ? seat.camera.clone()
+            : helper.player() != null ? helper.player().getEyeLocation() : player.getLocation();
+        player.setSpectatorTarget(null);
+        unrig(seat);
+        seat.view = View.FREE;
+        player.teleport(here);
+        tell(player, "You're free to fly around here. Say chase or watch to follow me again, "
+            + "or back to go back to where you started.");
     }
 
     public void stop(UUID id) {
@@ -143,7 +184,7 @@ public final class Watch implements Listener {
 
     private void follow(Player player, Seat seat) {
         Player agent = helper.player();
-        if (agent == null || agent.isDead()) {
+        if (seat.view == View.FREE || agent == null || agent.isDead()) {
             return;
         }
         if (player.getGameMode() != GameMode.SPECTATOR) {

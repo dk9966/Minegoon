@@ -14,6 +14,7 @@ class PlainTest {
         assertEquals(order("chase", 0, ""), Plain.read("watch in third person", "Builder", false));
         assertEquals(order("chase", 0, ""), Plain.read("!watch 3rd person", "Builder", true));
         assertEquals(order("watch", 0, ""), Plain.read("!watch", "Builder", true));
+        assertEquals(order("free", 0, ""), Plain.read("!free", "Builder", true));
     }
 
     @Test
