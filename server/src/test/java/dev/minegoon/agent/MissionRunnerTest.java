@@ -75,8 +75,33 @@ class MissionRunnerTest {
         assertEquals(5, mission.modelCalls());
         assertEquals(2, mission.strongCalls());
         assertEquals(5 * ScriptedModel.COST, mission.cost(), 1e-9);
-        assertEquals(List.of("All done."), said);
+        assertEquals(List.of("My plan for \"get 4 logs\":", "do the work", "All done."), said);
         assertEquals(List.of(id), ended.stream().map(Mission::id).toList());
+    }
+
+    @Test
+    void aPlanIsStagesFromHereToTheGoalAndWhatToDoWhenThingsChange() {
+        ScriptedModel model = new ScriptedModel()
+            .then("write_plan", """
+                {"stages": [
+                  {"aim": "Wooden tools", "get": ["4 oak_log", "1 crafting_table", "1 wooden_pickaxe"],
+                   "where": "the forest nearby", "do": ["chop logs", "craft"], "watch_for": ["falling from trees"]},
+                  {"aim": "Iron pickaxe", "get": ["3 iron_ingot"], "where": "caves near y=14, toward the mountains",
+                   "do": ["mine iron", "smelt it"], "watch_for": ["lava: step back"]}],
+                 "if_then": ["night falls: dig in or sleep", "If health is low, back off and eat"],
+                 "done_when": []}""")
+            .then("finish", "{\"summary\": \"All done.\"}");
+        long id = run(model, AGENT);
+
+        List<String> steps = missions.mission(id).orElseThrow().plan().steps();
+        assertEquals(List.of(
+            "Stage 1: Wooden tools. Get: 4 oak_log, 1 crafting_table, 1 wooden_pickaxe. Where: the forest nearby. "
+                + "Do: chop logs; craft. Watch for: falling from trees.",
+            "Stage 2: Iron pickaxe. Get: 3 iron_ingot. Where: caves near y=14, toward the mountains. "
+                + "Do: mine iron; smelt it. Watch for: lava: step back.",
+            "If night falls: dig in or sleep",
+            "If health is low, back off and eat"), steps);
+        assertEquals("My plan for \"get 4 logs\":", said.getFirst());
     }
 
     @Test

@@ -91,8 +91,12 @@ public final class AdminCommand implements TabExecutor {
     }
 
     private void plan(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            foreman.plan().forEach(sender::sendMessage);
+            return;
+        }
         if (args.length < 2 || !args[0].matches("\\d+")) {
-            sender.sendMessage("Usage: /minegoon plan <count> <item>");
+            sender.sendMessage("Usage: /minegoon plan, or /minegoon plan <count> <item> to preview the steps");
             return;
         }
         Material goal = ItemSet.parse(String.join(" ", Arrays.copyOfRange(args, 1, args.length)));

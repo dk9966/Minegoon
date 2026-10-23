@@ -143,6 +143,54 @@ public final class Prospector {
         this.orders = orders;
     }
 
+    /**
+     * Where a step's search looks and how, from the knowledge and the lessons
+     * learned, in words a plan can use. Null for steps that do not search.
+     */
+    public String where(Step step) {
+        List<String> names = subjects(step);
+        if (names.isEmpty()) {
+            return null;
+        }
+        Find find = orders.over(lessons.apply(knowledge.canonical(names.getFirst()), knowledge.find(names)));
+        List<String> parts = new ArrayList<>();
+        if (find.best() != null) {
+            parts.add("most at y=" + find.best()
+                + (find.low() > Integer.MIN_VALUE && find.high() < Integer.MAX_VALUE
+                    ? " (y " + find.low() + " to " + find.high() + ")" : ""));
+        }
+        if (!find.biomes().isEmpty()) {
+            parts.add("in " + String.join(", ", find.biomes()));
+        }
+        if (!find.visit().isEmpty()) {
+            parts.add("at " + String.join(", ", find.visit()));
+        }
+        List<String> ways = find.ways().stream().map(Prospector::means).toList();
+        if (!ways.isEmpty()) {
+            parts.add("looked for " + String.join(", then ", ways));
+        }
+        if (find.best() != null && find.best() < DEEP_BEST) {
+            parts.add("from the surface it heads for mountains, away from water, up to " + DEEP_FRONTIER
+                + " blocks a walk");
+        }
+        if (find.trip() != null) {
+            parts.add("packs for a " + find.trip() + " trip first");
+        }
+        return parts.isEmpty() ? null : String.join("; ", parts);
+    }
+
+    private static String means(Way way) {
+        return switch (way) {
+            case CAVE -> "down cave mouths and ravine floors in sight";
+            case CAVERN -> "through big caves underground";
+            case CLIFF -> "on bare rock faces";
+            case PEAK -> "from high ground";
+            case ROAM -> "by walking the biomes listed";
+            case VISIT -> "at the structures listed";
+            case DIG -> "by digging stairs and tunnels";
+        };
+    }
+
     /** The knowledge entry that speaks for a step, or null for steps that do not search. */
     public String subject(Step step) {
         List<String> names = subjects(step);

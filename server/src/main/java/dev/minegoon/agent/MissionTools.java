@@ -209,14 +209,18 @@ public final class MissionTools {
 
     private Tool<Mission> planPreview() {
         return Tool.of("plan_preview", """
-            Shows the steps get_items would take for an item from what the helper holds now, without doing \
-            any of them.""", ITEM_AND_COUNT, (args, mission) -> {
+            Shows every step get_items would take for an item from what the helper holds now, and for each \
+            thing it has to find, where that is and how it is looked for. Does none of them.""", ITEM_AND_COUNT,
+            (args, mission) -> {
                 int count = args.count("count");
                 Material item = args.item("item");
                 try {
                     List<Step> steps = foreman.preview(item, count);
                     return Receipt.confirmed("plan_preview", IntStream.range(0, steps.size())
-                        .mapToObj(i -> (i + 1) + ". " + steps.get(i).describe())
+                        .mapToObj(i -> {
+                            String where = crew.prospector().where(steps.get(i));
+                            return (i + 1) + ". " + steps.get(i).describe() + (where == null ? "" : " [" + where + "]");
+                        })
                         .collect(Collectors.joining("; ")) + ".");
                 } catch (Planner.Unplannable none) {
                     return Receipt.refused("plan_preview", "No plan: " + none.getMessage() + ".");

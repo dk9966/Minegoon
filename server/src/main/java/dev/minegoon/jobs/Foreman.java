@@ -429,6 +429,18 @@ public final class Foreman {
         return lines;
     }
 
+    /** The plan of the mission under way, or else the last one, a line a stage, for a player to read. */
+    public List<String> plan() {
+        Optional<Mission> mission = missions.current().or(() -> missions.recent(1).stream().findFirst());
+        if (mission.isEmpty() || mission.get().plan() == null) {
+            return List.of("I have no plan written yet.");
+        }
+        List<String> lines = new ArrayList<>();
+        lines.add("My plan for " + mission.get().describe() + ":");
+        lines.addAll(mission.get().plan().steps());
+        return lines;
+    }
+
     private static String state(Task.Status status, String reason) {
         return status == Task.Status.PAUSED ? "Paused (" + reason + ")" : "Working";
     }

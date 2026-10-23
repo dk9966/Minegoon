@@ -40,7 +40,8 @@ public final class MissionRunner {
     static final String WRITE_PLAN = "write_plan";
     static final String FINISH = "finish";
     static final String GIVE_UP = "give_up";
-    private static final Set<String> PLANNING = Set.of(WRITE_PLAN, GIVE_UP);
+    /** Before there is a plan: writing one, giving up, and the calls that only look. */
+    private static final Set<String> PLANNING = Set.of(WRITE_PLAN, GIVE_UP, "plan_preview", "look_around", "inventory");
     private static final int MODEL_TRIES = 3;
     private static final int NEAR_BY_DEFAULT = 4;
     private static final int MAX_NEAR = 64;
@@ -49,9 +50,28 @@ public final class MissionRunner {
         You control %s, a helper player in Minecraft Java 26.3 survival, to carry out one player's request.
         Each turn you call exactly one tool. The helper does it, and you read a receipt: what the game shows
         happened. Receipts are the truth, not what was hoped.
-        First write a short plan with write_plan: the steps, and done_when checks the game can test once the
-        whole request is done (the helper has N of an item, or is within R blocks of a player). Choose checks
-        that all hold at the end, after anything is handed over.
+        First write the plan with write_plan. A plan is not the goal said again: it gets the helper from where
+        it stands now, with what it holds now, to the goal. Before writing it, call plan_preview for what the
+        player wants (for a set of armor or tools, the shared material is enough) to see every step from the current
+        inventory and where each raw material is found; use inventory or look_around if you need more. Then
+        write stages in order, each with:
+        - aim: what the stage achieves, such as "a stone pickaxe and a sword" or "24 diamonds";
+        - get: every item the stage gathers, crafts, smelts or hunts, with counts, including tools, fuel, food
+          and torches the later stages need, not only the end product;
+        - where: where the helper goes and how it finds that place: biome, height (y), a forest, a cliff, a
+          cave mouth or ravine, mountains, a structure, back to the player;
+        - do: the actions, in order;
+        - watch_for: what can go wrong in that place and what to do about it.
+        Then if_then: what the helper does when things change along the way, at least for night, hunger, low
+        health, a tool wearing out, creepers, skeletons and crowds of monsters, endermen (never look at them),
+        lava and water underground, no way down found, getting lost, and dying with items on the ground.
+        Survival facts to plan with: wood, then a crafting table and wooden pickaxe; stone for stone tools and a
+        furnace; iron (best near y=14, in caves and cliffs) smelted for an iron pickaxe, which diamond needs;
+        diamonds near y=-59, reached through big caves and deep ravines, which mountains have most of; coal or
+        wood for fuel; cooked meat for food; the helper does not dig tunnels or stairs unless the player asked.
+        Last, done_when: checks the game can test once the whole request is done (the helper has N of an item,
+        or is within R blocks of a player). Choose checks that all hold at the end, after anything is handed
+        over. Players read the plan in chat, so write it in plain words.
         get_items does long work on its own: it plans, gathers, crafts, smelts, and fights for everything an
         item needs, and packs what a dangerous trip takes before it goes. Ask it for the item the player wants,
         not for the parts, with one exception: when several items need the same material from a long trip, such
@@ -255,10 +275,21 @@ public final class MissionRunner {
 
     private Tool<Mission> writePlan() {
         return Tool.of(WRITE_PLAN, """
-            Writes the plan, or a new one in place of the old: short steps in order, and the checks that say the \
-            whole request is done.""", """
+            Writes the plan, or a new one in place of the old: the stages from where the helper is now to the \
+            goal, what to do when things change on the way, and the checks that say the whole request is done.""",
+            """
             {"type": "object", "properties": {
-              "steps": {"type": "array", "items": {"type": "string"}},
+              "stages": {"type": "array", "minItems": 1, "items": {"type": "object", "properties": {
+                "aim": {"type": "string", "description": "What this stage achieves"},
+                "get": {"type": "array", "items": {"type": "string"},
+                        "description": "Items with counts, such as 3 iron_ingot"},
+                "where": {"type": "string", "description": "Where to go and how to find it"},
+                "do": {"type": "array", "items": {"type": "string"}, "description": "The actions, in order"},
+                "watch_for": {"type": "array", "items": {"type": "string"},
+                              "description": "What can go wrong here, and what to do"}
+              }, "required": ["aim", "get", "where", "do", "watch_for"]}},
+              "if_then": {"type": "array", "items": {"type": "string"},
+                          "description": "If this happens on the way, do that"},
               "done_when": {"type": "array", "items": {"type": "object", "properties": {
                 "kind": {"type": "string", "enum": ["have", "near"],
                          "description": "have: the helper holds count of item. near: it is within blocks of player."},
@@ -267,10 +298,19 @@ public final class MissionRunner {
                 "player": {"type": "string", "description": "For near: leave empty for the player who asked"},
                 "within": {"type": "integer", "minimum": 1, "maximum": %d}
               }, "required": ["kind"]}}
-            }, "required": ["steps", "done_when"]}""".formatted(MAX_NEAR), (args, mission) -> {
-                List<String> steps = args.texts("steps");
+            }, "required": ["stages", "if_then", "done_when"]}""".formatted(MAX_NEAR), (args, mission) -> {
+                List<String> steps = new ArrayList<>();
+                List<Args> stages = args.objects("stages");
+                for (int i = 0; i < stages.size(); i++) {
+                    steps.add(stage(i + 1, stages.get(i)));
+                }
+                args.texts("if_then").forEach(rule -> steps.add(rule.regionMatches(true, 0, "if ", 0, 3)
+                    ? rule : "If " + rule));
+                if (stages.isEmpty()) {
+                    steps.addAll(args.texts("steps"));
+                }
                 if (steps.isEmpty()) {
-                    throw new Args.Refused("a plan needs at least one step");
+                    throw new Args.Refused("a plan needs at least one stage");
                 }
                 List<Check> checks = new ArrayList<>();
                 for (Args check : args.objects("done_when")) {
@@ -282,9 +322,33 @@ public final class MissionRunner {
                     });
                 }
                 missions.setPlan(mission.id(), new Mission.Plan(steps, checks));
-                return Receipt.confirmed(WRITE_PLAN, "Plan saved: " + steps.size() + " steps, " + checks.size()
-                    + " checks.");
+                say.accept("My plan for " + mission.describe() + ":");
+                steps.forEach(say);
+                return Receipt.confirmed(WRITE_PLAN, "Plan saved: " + stages.size() + " stages, "
+                    + (steps.size() - stages.size()) + " if-thens, " + checks.size() + " checks.");
             });
+    }
+
+    /** One stage as a line a player can read in chat. */
+    private static String stage(int number, Args stage) {
+        StringBuilder line = new StringBuilder("Stage ").append(number).append(": ").append(stage.text("aim"));
+        List<String> get = stage.texts("get");
+        if (!get.isEmpty()) {
+            line.append(". Get: ").append(String.join(", ", get));
+        }
+        String where = stage.text("where", "");
+        if (!where.isBlank()) {
+            line.append(". Where: ").append(where);
+        }
+        List<String> actions = stage.texts("do");
+        if (!actions.isEmpty()) {
+            line.append(". Do: ").append(String.join("; ", actions));
+        }
+        List<String> risks = stage.texts("watch_for");
+        if (!risks.isEmpty()) {
+            line.append(". Watch for: ").append(String.join("; ", risks));
+        }
+        return line.append('.').toString().replace("..", ".");
     }
 
     private Tool<Mission> finish() {

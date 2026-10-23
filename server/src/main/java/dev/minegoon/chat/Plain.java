@@ -121,7 +121,7 @@ final class Plain {
         return switch (word) {
             case "get", "grab", "fetch", "bring" -> "get";
             case "come", "give", "status", "inventory", "stop", "pause", "resume", "protect", "allow", "watch",
-                "chase", "free", "back", "help" -> word;
+                "chase", "free", "back", "help", "plan" -> word;
             case "inv" -> "inventory";
             default -> null;
         };

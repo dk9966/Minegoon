@@ -18,7 +18,7 @@ public final class Commands {
     private static final int DEFAULT_RADIUS = 16;
     private static final int MAX_RADIUS = 128;
     public static final int MAX_COUNT = 64 * 9;
-    private static final String HELP = "Say get 5 diamond, come, give, status, inventory, stop, pause, "
+    private static final String HELP = "Say get 5 diamond, come, give, status, plan, inventory, stop, pause, "
         + "resume, protect 20, allow 10, watch, chase, free, or back.";
 
     /** Who asked, and where they were standing. Console requests have no id. */
@@ -66,6 +66,7 @@ public final class Commands {
             case "come" -> foreman.come(speaker.id());
             case "give" -> foreman.give(speaker.id());
             case "status" -> foreman.status().forEach(helper::say);
+            case "plan" -> foreman.plan().forEach(helper::say);
             case "inventory" -> peek.open(speaker.id());
             case "stop" -> foreman.stop();
             case "pause" -> foreman.pause();
