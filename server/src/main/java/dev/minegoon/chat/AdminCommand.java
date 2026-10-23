@@ -25,7 +25,7 @@ import org.bukkit.entity.Player;
 public final class AdminCommand implements TabExecutor {
 
     private static final List<String> SUBCOMMANDS = List.of(
-        "get", "status", "inventory", "stop", "pause", "resume", "come", "give", "protect", "allow", "watch", "back",
+        "get", "status", "inventory", "stop", "pause", "resume", "come", "give", "protect", "allow", "watch", "chase", "back",
         "ask", "plan", "results", "reset");
 
     private final Helper helper;

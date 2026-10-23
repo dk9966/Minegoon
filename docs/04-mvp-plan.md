@@ -32,6 +32,7 @@ On the technical side: Apex stays your world, switched from vanilla to **Paper 2
 | `protect <radius>` | Marks the area around you as off-limits for breaking. `protect this area` uses 16 blocks |
 | `allow <radius>` | Lifts the careful-building rule in an area for the current task (for example, "tear down that dirt hut") |
 | `watch` / `back` | Follows the helper in spectator, through its eyes. `back` returns you to where you were, in the game mode you had. Anyone can use it. Nobody is moved unless they ask |
+| `chase` | Follows the helper in spectator from behind and above, looking at it, like the game's third-person view. A wall pulls the camera in. `watch in third person` means the same. `back` ends it |
 
 When a `!get` finishes, the bot comes back to you and hands the items over on its own.
 

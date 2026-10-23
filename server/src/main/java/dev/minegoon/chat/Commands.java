@@ -19,7 +19,7 @@ public final class Commands {
     private static final int MAX_RADIUS = 128;
     public static final int MAX_COUNT = 64 * 9;
     private static final String HELP = "Say get 5 diamond, come, give, status, inventory, stop, pause, "
-        + "resume, protect 20, allow 10, watch, or back.";
+        + "resume, protect 20, allow 10, watch, chase, or back.";
 
     /** Who asked, and where they were standing. Console requests have no id. */
     public record Speaker(UUID id, String name, Location location) {
@@ -73,6 +73,7 @@ public final class Commands {
             case "protect" -> protect(speaker, order.number());
             case "allow" -> allow(speaker, order.number());
             case "watch" -> watch.start(speaker.id());
+            case "chase" -> watch.chase(speaker.id());
             case "back" -> watch.stop(speaker.id());
             case "help" -> helper.say(HELP);
             default -> helper.say(HELP);

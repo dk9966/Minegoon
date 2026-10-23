@@ -34,6 +34,9 @@ final class Plain {
     /** The brakes: they act at once and every time, never waiting on a model. */
     private static final Set<String> CONTROLS = Set.of("stop", "pause", "resume", "come");
 
+    /** Any of these after watch asks for the view from behind: "watch in third person", "watch me from behind". */
+    private static final Set<String> THIRD_PERSON = Set.of("third", "3rd", "behind", "chase");
+
     /** Words that look like a get but are not an item, so plain chat is not stolen. */
     private static final Set<String> NOT_ITEM = Set.of("it", "that", "this", "them", "something", "stuff", "things");
 
@@ -52,6 +55,9 @@ final class Plain {
             return Optional.empty();
         }
         List<String> rest = words.subList(at + 1, words.size());
+        if (verb.equals("watch") && rest.stream().anyMatch(THIRD_PERSON::contains)) {
+            return Optional.of(new Order("chase", 0, ""));
+        }
         return switch (verb) {
             case "get" -> readGet(rest, strict);
             case "protect", "allow" -> readZone(verb, rest, strict);
@@ -115,7 +121,7 @@ final class Plain {
         return switch (word) {
             case "get", "grab", "fetch", "bring" -> "get";
             case "come", "give", "status", "inventory", "stop", "pause", "resume", "protect", "allow", "watch",
-                "back", "help" -> word;
+                "chase", "back", "help" -> word;
             case "inv" -> "inventory";
             default -> null;
         };

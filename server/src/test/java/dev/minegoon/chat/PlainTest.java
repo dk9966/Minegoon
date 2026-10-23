@@ -8,6 +8,15 @@ import org.junit.jupiter.api.Test;
 class PlainTest {
 
     @Test
+    void readsTheViewFromBehind() {
+        assertEquals(order("chase", 0, ""), Plain.read("!chase", "Builder", true));
+        assertEquals(order("chase", 0, ""), Plain.read("Builder, chase", "Builder", false));
+        assertEquals(order("chase", 0, ""), Plain.read("watch in third person", "Builder", false));
+        assertEquals(order("chase", 0, ""), Plain.read("!watch 3rd person", "Builder", true));
+        assertEquals(order("watch", 0, ""), Plain.read("!watch", "Builder", true));
+    }
+
+    @Test
     void readsABangLine() {
         assertEquals(order("get", 5, "diamond"), Plain.read("!get 5 diamond", "Builder", true));
         assertEquals(order("get", 5, "diamond"), Plain.read("!get diamond 5", "Builder", true));
