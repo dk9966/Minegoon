@@ -104,6 +104,15 @@ class KnowledgeTest {
     }
 
     @Test
+    void theMiningTripCarriesTheStoneKitAndNoSword() throws IOException {
+        List<Knowledge.Supply> mine = shipped().trip("mine");
+        for (String tool : List.of("stone_pickaxe", "stone_axe", "stone_shovel")) {
+            assertTrue(mine.stream().anyMatch(supply -> supply.items().contains(tool)), tool);
+        }
+        assertTrue(mine.stream().noneMatch(supply -> supply.items().stream().anyMatch(item -> item.endsWith("_sword"))));
+    }
+
+    @Test
     void upTopAndOptionalMarksReadInEitherOrder() {
         Knowledge knowledge = Knowledge.read(new StringReader("""
             trips:

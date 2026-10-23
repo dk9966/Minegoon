@@ -356,7 +356,7 @@ Code knows:
 - A water or lava bucket is a right-click on a source block, not a recipe.
 - Hungry with nothing to eat: hunt a cow, pig, sheep, or chicken and eat it, then continue the task.
 - The tool for the current step is about to break: craft another of that tool, then continue.
-- Night with no sword: craft a wooden sword. Night on the surface: make a bed if needed, sleep, pick the bed back up.
+- Night with no weapon: craft a stone axe. Night on the surface: make a bed if needed, sleep, pick the bed back up.
 - Nothing of this source in range, but another source is known: the model is told that, and it can switch. With no key, the code switches on its own.
 
 Inside a task, the model does three things: choose the move before a gather, hunt, grow, or fill, choose again when that search is empty, and choose again when any step fails. A third failure stops the task without another call.
