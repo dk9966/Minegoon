@@ -10,6 +10,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -23,6 +24,10 @@ import org.bukkit.util.Vector;
  * eyes, including underground, or says chase and is carried along behind and
  * above it, looking at it. back puts them where they were, in the game mode
  * they had. Nothing pulls a player in on its own.
+ *
+ * <p>The chase view spectates an invisible armor stand that the server moves.
+ * The client glides an entity between the places it is sent to, but jumps a
+ * player that is teleported, so moving the player itself shakes the screen.
  */
 public final class Watch implements Listener {
 
@@ -31,9 +36,14 @@ public final class Watch implements Listener {
     private static final double ABOVE = 1.5;
     /** Kept between the camera and a wall, so it never sits inside rock. */
     private static final double CLEARANCE = 0.4;
-    /** Share of the way to where it should be that the camera moves each tick. Lower is smoother and laggier. */
-    private static final double EASE = 0.35;
-    private static final double TURN_EASE = 0.12;
+    /** Share of the way to where it should be that the camera moves each tick. Lower is gentler and laggier. */
+    private static final double EASE = 0.12;
+    private static final double TURN_EASE = 0.04;
+    /** Slower than this, in blocks a tick, the helper is standing and the camera keeps its side. */
+    private static final double WALKING = 0.08;
+    /** Moves smaller than these are not sent, so a still helper means a still screen. */
+    private static final double NUDGE = 0.03;
+    private static final float NUDGE_DEGREES = 0.4f;
     /** Further than this from where it should be, the camera jumps there, as after a respawn or a long fall. */
     private static final double SNAP = 24;
 
@@ -47,7 +57,9 @@ public final class Watch implements Listener {
         final Location returnTo;
         final GameMode mode;
         View view;
+        ArmorStand rig;
         Location camera;
+        Location helperWas;
         float yaw;
 
         Seat(Location returnTo, GameMode mode, View view) {
@@ -83,7 +95,9 @@ public final class Watch implements Listener {
             Seat seat = seats.computeIfAbsent(player.getUniqueId(),
                 key -> new Seat(player.getLocation().clone(), player.getGameMode(), view));
             seat.view = view;
-            seat.camera = null;
+            if (view == View.EYES) {
+                unrig(seat);
+            }
             follow(player, seat);
             tell(player, message);
         });
@@ -99,7 +113,7 @@ public final class Watch implements Listener {
         });
     }
 
-    /** Moves every chase camera, and puts the eyes view back on the helper if a death or a scroll-away dropped it. */
+    /** Moves every chase camera, and puts each view back on the helper if a death or a scroll-away dropped it. */
     public void tick() {
         Player agent = helper.player();
         if (agent == null || agent.isDead()) {
@@ -136,10 +150,10 @@ public final class Watch implements Listener {
             player.setGameMode(GameMode.SPECTATOR);
         }
         if (seat.view == View.CHASE) {
-            if (player.getSpectatorTarget() != null) {
-                player.setSpectatorTarget(null);
+            ArmorStand rig = behind(seat, agent);
+            if (player.getSpectatorTarget() == null || !player.getSpectatorTarget().equals(rig)) {
+                player.setSpectatorTarget(rig);
             }
-            behind(player, seat, agent);
             return;
         }
         if (!(player.getSpectatorTarget() instanceof Player target)
@@ -149,15 +163,26 @@ public final class Watch implements Listener {
     }
 
     /**
-     * Behind the way the helper faces, turning after it slowly so a glance
-     * aside does not swing the camera. A wall between the helper and that
-     * spot pulls the camera in, the way the game's own third-person view does.
+     * Behind the way the helper walks, turning after it slowly, so the many
+     * glances a search makes do not swing the camera. A wall between the
+     * helper and that spot pulls the camera in, the way the game's own
+     * third-person view does. Returns the stand the player watches from.
      */
-    private void behind(Player player, Seat seat, Player agent) {
+    private ArmorStand behind(Seat seat, Player agent) {
         Location eye = agent.getEyeLocation();
-        boolean fresh = seat.camera == null || !seat.camera.getWorld().equals(eye.getWorld())
-            || seat.camera.distance(eye) > SNAP;
-        seat.yaw = fresh ? eye.getYaw() : seat.yaw + (float) (TURN_EASE * wrap(eye.getYaw() - seat.yaw));
+        boolean fresh = seat.rig == null || !seat.rig.isValid() || seat.camera == null
+            || !seat.camera.getWorld().equals(eye.getWorld()) || seat.camera.distance(eye) > SNAP;
+        if (fresh) {
+            unrig(seat);
+            seat.yaw = eye.getYaw();
+        } else {
+            Vector walked = agent.getLocation().toVector().subtract(seat.helperWas.toVector()).setY(0);
+            if (walked.length() > WALKING) {
+                float heading = (float) Math.toDegrees(Math.atan2(-walked.getX(), walked.getZ()));
+                seat.yaw += (float) (TURN_EASE * wrap(heading - seat.yaw));
+            }
+        }
+        seat.helperWas = agent.getLocation();
 
         double radians = Math.toRadians(seat.yaw);
         Vector back = new Vector(Math.sin(radians), 0, -Math.cos(radians)).multiply(BEHIND).setY(ABOVE);
@@ -169,15 +194,54 @@ public final class Watch implements Listener {
             : Math.max(0.5, wall.getHitPosition().distance(eye.toVector()) - CLEARANCE);
         Location wanted = eye.clone().add(way.multiply(free));
 
-        Location camera = fresh ? wanted : seat.camera.clone().add(wanted.toVector().subtract(seat.camera.toVector())
-            .multiply(EASE));
-        if (wall != null) {
+        Location camera;
+        if (fresh) {
             camera = wanted;
+        } else {
+            Vector toward = wanted.toVector().subtract(seat.camera.toVector());
+            camera = seat.camera.clone().add(toward.multiply(wall != null ? Math.max(EASE, 0.5) : EASE));
         }
         Vector look = eye.toVector().subtract(camera.toVector());
         camera.setDirection(look.lengthSquared() < 1e-6 ? eye.getDirection() : look);
+
+        if (fresh) {
+            seat.rig = rig(camera);
+        } else if (camera.distance(seat.camera) > NUDGE
+            || Math.abs(wrap(camera.getYaw() - seat.camera.getYaw())) > NUDGE_DEGREES
+            || Math.abs(camera.getPitch() - seat.camera.getPitch()) > NUDGE_DEGREES) {
+            seat.rig.teleport(standAt(camera, seat.rig));
+        } else {
+            return seat.rig;
+        }
         seat.camera = camera;
-        player.teleport(camera);
+        return seat.rig;
+    }
+
+    private static ArmorStand rig(Location camera) {
+        return camera.getWorld().spawn(camera, ArmorStand.class, stand -> {
+            stand.setMarker(true);
+            stand.setInvisible(true);
+            stand.setGravity(false);
+            stand.setInvulnerable(true);
+            stand.setSilent(true);
+            stand.setPersistent(false);
+            stand.setCollidable(false);
+            stand.teleport(standAt(camera, stand));
+        });
+    }
+
+    /** Where the stand goes so that its eyes, which the player sees from, are at the camera. */
+    private static Location standAt(Location camera, ArmorStand stand) {
+        return camera.clone().subtract(0, stand.getEyeHeight(), 0);
+    }
+
+    private static void unrig(Seat seat) {
+        if (seat.rig != null) {
+            seat.rig.remove();
+        }
+        seat.rig = null;
+        seat.camera = null;
+        seat.helperWas = null;
     }
 
     private static float wrap(float degrees) {
@@ -201,6 +265,7 @@ public final class Watch implements Listener {
         if (player.getGameMode() == GameMode.SPECTATOR) {
             player.setSpectatorTarget(null);
         }
+        unrig(seat);
         player.teleport(seat.returnTo);
         player.setGameMode(seat.mode);
         if (tell) {
