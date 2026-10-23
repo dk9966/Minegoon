@@ -110,8 +110,18 @@ public final class FakePlayer {
         handle.xxa = controls.strafe();
         handle.setJumping(controls.jump());
         handle.setShiftKeyDown(controls.sneak());
-        handle.setSprinting(controls.sprint() && !controls.sneak() && handle.getFoodData().getFoodLevel() > 6);
+        boolean sprint = controls.sprint() && !controls.sneak() && handle.getFoodData().getFoodLevel() > 6;
+        // Touch the sprint flag only when it changes. Setting it again every tick
+        // drops and re-adds the speed modifier, and the run stutters.
+        if (handle.isSprinting() != sprint) {
+            handle.setSprinting(sprint);
+        }
         handle.doTick();
+        // A graze on a wall can clear sprint during the tick. Put it back while there is still food,
+        // or the next step starts from a walk and the run stutters.
+        if (sprint && handle.getFoodData().getFoodLevel() > 6 && !handle.isSprinting()) {
+            handle.setSprinting(true);
+        }
         handle.doCheckFallDamage(handle.getX() - x, handle.getY() - y, handle.getZ() - z, handle.onGround());
         handle.level().getChunkSource().move(handle);
     }
