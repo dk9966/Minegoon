@@ -511,6 +511,44 @@ public final class Vision {
         return seen;
     }
 
+    /** One column of the land far off: the top of it, its biome, and whether that top is water. */
+    public record Column(Pos at, String biome, boolean water) {
+    }
+
+    /**
+     * The land out to {@code reach} blocks, every {@code step} blocks, read
+     * from the height map of chunks the server already has loaded. This is
+     * the shape of the land the way a player sees it at the edge of their
+     * render distance: mountains and sea, not what is in a cave.
+     */
+    public List<Column> horizon(int reach, int step) {
+        return main.call(() -> {
+            Player self = player.get();
+            World world = self.getWorld();
+            Location at = self.getLocation();
+            int cx = at.getBlockX();
+            int cz = at.getBlockZ();
+            long far = (long) reach * reach;
+            List<Column> columns = new ArrayList<>();
+            for (int x = cx - reach; x <= cx + reach; x += step) {
+                for (int z = cz - reach; z <= cz + reach; z += step) {
+                    long dx = x - cx;
+                    long dz = z - cz;
+                    if (dx * dx + dz * dz > far || !world.isChunkLoaded(x >> 4, z >> 4)) {
+                        continue;
+                    }
+                    int top = world.getHighestBlockYAt(x, z, org.bukkit.HeightMap.MOTION_BLOCKING_NO_LEAVES);
+                    Material type = world.getType(x, top, z);
+                    Biome biome = world.getBiome(x, top, z);
+                    columns.add(new Column(new Pos(x, top + 1, z), biome.getKey().getKey(),
+                        type == Material.WATER || type == Material.ICE || type == Material.SEAGRASS
+                            || type == Material.KELP || type == Material.KELP_PLANT));
+                }
+            }
+            return columns;
+        });
+    }
+
     /** The biomes on the ground in sight, each at its nearest sampled point. */
     public List<Patch> biomes() {
         Map<String, Patch> nearest = new LinkedHashMap<>();

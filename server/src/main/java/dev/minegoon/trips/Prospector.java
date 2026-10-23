@@ -58,17 +58,30 @@ public final class Prospector {
     private static final int OPENING_WITHIN = 160;
     private static final int DRY_PASSES = 2;
     /**
-     * A search for something that is best below this height needs a big cave
-     * or a deep ravine. Near spawn the cave mouths can all be shallow, so it
-     * walks further each time and keeps going longer before it gives up.
+     * A search for something that is best below this height is a search for
+     * a way under the ground: a big cave, a deep ravine, a cliff. Near spawn
+     * the cave mouths can all be shallow, so it walks further each time, heads
+     * for mountains, and keeps going longer before it gives up.
      */
-    private static final int DEEP_BEST = 0;
+    private static final int DEEP_BEST = 32;
     private static final int DEEP_FRONTIER = 96;
     private static final int DEEP_DRY_PASSES = 8;
     /** Ground this far above the feet is a mountain, where ravines and cave mouths cut deepest. */
     private static final int MOUNTAIN_ABOVE = 20;
-    /** How much one mountain sample in a direction weighs against one unseen chunk there. */
-    private static final int MOUNTAIN_PULL = 2;
+    /**
+     * How far the helper reads the shape of the land, as a player would at a
+     * render distance of 16 chunks, and how often it samples it.
+     */
+    private static final int HORIZON = 256;
+    private static final int HORIZON_STEP = 16;
+    /**
+     * What a direction that is all mountain, or all water, is worth against
+     * one unseen chunk that way. A walk toward the sea finds no caves, ore or
+     * herds, so water counts against every search.
+     */
+    private static final double MOUNTAIN_PULL = 30;
+    private static final double WATER_PUSH = 30;
+    private static final int SHORE = 6;
     private static final Set<String> MOUNTAINS = Set.of("jagged_peaks", "frozen_peaks", "stony_peaks",
         "snowy_slopes", "grove", "meadow", "cherry_grove", "windswept_hills", "windswept_gravelly_hills",
         "windswept_forest", "windswept_savanna");
@@ -400,10 +413,12 @@ public final class Prospector {
             }
             List<Pos> lookouts = lookouts();
             double apart = Math.pow(vision.radius() / 2.0, 2);
+            WorldView view = vision.around();
             List<Pos> patches = vision.patches().stream()
                 .filter(patch -> find.biomes().contains(patch.biome()))
                 .sorted(Comparator.comparingInt(patch -> find.biomes().indexOf(patch.biome())))
                 .map(Vision.Patch::at)
+                .filter(at -> !shore(view, at))
                 .filter(at -> nearest(lookouts, at) >= apart)
                 .limit(TARGETS)
                 .toList();
@@ -451,7 +466,7 @@ public final class Prospector {
         int surface = surface(feet);
         boolean buried = surface - feet.y() > BURIED;
         boolean far = deep && !buried;
-        int[] pull = far ? mountains(feet) : new int[COMPASS.length];
+        double[] lean = buried ? new double[COMPASS.length] : lean(feet, deep);
         boolean digging = orders.ways().contains(Way.DIG) && tunneler.armed();
         if (buried && digging) {
             tunneler.turn();
@@ -463,8 +478,8 @@ public final class Prospector {
         for (int i = 0; i < COMPASS.length; i++) {
             order.add(i);
         }
-        order.sort((a, b) -> Integer.compare(unseen(feet, b) + MOUNTAIN_PULL * pull[b] + (b == heading ? 1 : 0),
-            unseen(feet, a) + MOUNTAIN_PULL * pull[a] + (a == heading ? 1 : 0)));
+        order.sort((a, b) -> Double.compare(unseen(feet, b) + lean[b] + (b == heading ? 1 : 0),
+            unseen(feet, a) + lean[a] + (a == heading ? 1 : 0)));
         int reach = far ? DEEP_FRONTIER : FRONTIER;
         for (int direction : order) {
             int[] step = COMPASS[direction];
@@ -488,6 +503,18 @@ public final class Prospector {
             }
         }
         throw new ActionFailed("I can't find a way out of here to new ground");
+    }
+
+    /** Water, or land a few steps from it: beaches and river banks, where a walk shows mostly water. */
+    private static boolean shore(WorldView view, Pos at) {
+        for (int[] d : new int[][] {{0, 0}, {SHORE, 0}, {-SHORE, 0}, {0, SHORE}, {0, -SHORE}}) {
+            int x = at.x() + d[0];
+            int z = at.z() + d[1];
+            if (view.covers(x, z) && view.type(x, view.highest(x, z), z) == Material.WATER) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The first open block over the ground above the feet. */
@@ -514,23 +541,37 @@ public final class Prospector {
     }
 
     /**
-     * For each compass direction, the ground samples in sight that way that
-     * are mountain: a mountain biome, or well above the feet.
+     * For each compass direction, how much the land out to the horizon that
+     * way is worth walking into: less for each share of it that is water, and
+     * for a {@code deep} search more for each share that is mountain, a
+     * mountain biome or ground well above the feet.
      */
-    private int[] mountains(Pos feet) {
-        int[] count = new int[COMPASS.length];
-        for (Vision.Patch patch : vision.patches()) {
-            Pos at = patch.at();
+    private double[] lean(Pos feet, boolean deep) {
+        int[] all = new int[COMPASS.length];
+        int[] high = new int[COMPASS.length];
+        int[] wet = new int[COMPASS.length];
+        for (Vision.Column column : vision.horizon(HORIZON, HORIZON_STEP)) {
+            Pos at = column.at();
             int dx = at.x() - feet.x();
             int dz = at.z() - feet.z();
-            if (dx == 0 && dz == 0) {
+            if (dx * dx + dz * dz < HORIZON_STEP * HORIZON_STEP) {
                 continue;
             }
-            if (MOUNTAINS.contains(patch.biome()) || at.y() >= feet.y() + MOUNTAIN_ABOVE) {
-                count[compass(dx, dz)]++;
+            int direction = compass(dx, dz);
+            all[direction]++;
+            if (column.water()) {
+                wet[direction]++;
+            } else if (MOUNTAINS.contains(column.biome()) || at.y() >= feet.y() + MOUNTAIN_ABOVE) {
+                high[direction]++;
             }
         }
-        return count;
+        double[] lean = new double[COMPASS.length];
+        for (int i = 0; i < COMPASS.length; i++) {
+            if (all[i] > 0) {
+                lean[i] = (deep ? MOUNTAIN_PULL * high[i] / all[i] : 0) - WATER_PUSH * wet[i] / all[i];
+            }
+        }
+        return lean;
     }
 
     /** The {@link #COMPASS} direction nearest to an offset. */
