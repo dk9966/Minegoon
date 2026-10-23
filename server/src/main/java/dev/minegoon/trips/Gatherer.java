@@ -275,39 +275,54 @@ public final class Gatherer {
             && age.getAge() >= age.getMaximumAge();
     }
 
-    /** Follows and hits the animal; returns where it fell, or null if it got away. */
+    /**
+     * Follows and hits the animal. Returns where it fell, including when the
+     * killing blow is only visible a tick later, or null if it got away alive.
+     */
     private Pos chase(UUID id, Checkpoint checkpoint) {
+        Pos last = null;
         for (int attempt = 0; attempt < MAX_CHASES; attempt++) {
             checkpoint.check();
-            Location at = body.main().call(() -> Bukkit.getEntity(id) instanceof LivingEntity prey && !prey.isDead()
-                ? prey.getLocation() : null);
-            if (at == null) {
-                return null;
+            Glance seen = body.main().call(() -> glance(id));
+            if (seen == null || !seen.alive()) {
+                return seen == null ? last : Pos.of(seen.at());
             }
-            boolean close = body.main().call(() -> body.player().getLocation().distance(at) <= HIT_RANGE);
+            last = Pos.of(seen.at());
+            boolean close = body.main().call(() -> body.player().getLocation().distance(seen.at()) <= HIT_RANGE);
             if (!close) {
-                mover.walk(Goal.near(Pos.of(at), HIT_RANGE - 0.5), checkpoint);
+                mover.walk(Goal.near(last, HIT_RANGE - 0.5), checkpoint);
                 continue;
             }
-            boolean killed = body.main().call(() -> {
-                Player player = body.player();
-                Material held = player.getInventory().getItemInMainHand().getType();
-                Fighter.wield(player);
-                boolean swapped = player.getInventory().getItemInMainHand().getType() != held;
-                if (!(Bukkit.getEntity(id) instanceof LivingEntity prey) || swapped
-                    || player.getAttackCooldown() < 0.9f) {
-                    return false;
-                }
-                Look.at(player, prey.getEyeLocation());
-                player.attack(prey);
-                player.swingMainHand();
-                return prey.isDead();
-            });
-            if (killed) {
-                return Pos.of(at);
+            Pos fell = body.main().call(() -> strike(id));
+            if (fell != null) {
+                return fell;
             }
             body.main().sleep(4);
         }
         return null;
+    }
+
+    /** Where the animal is. Null when it is already gone. Main thread. */
+    private static Glance glance(UUID id) {
+        return Bukkit.getEntity(id) instanceof LivingEntity prey ? new Glance(prey.getLocation(), !prey.isDead()) : null;
+    }
+
+    /** One swing. Where the animal fell, or null when that swing left it standing. Main thread. */
+    private Pos strike(UUID id) {
+        Player player = body.player();
+        Material held = player.getInventory().getItemInMainHand().getType();
+        Fighter.wield(player);
+        boolean swapped = player.getInventory().getItemInMainHand().getType() != held;
+        if (!(Bukkit.getEntity(id) instanceof LivingEntity prey) || swapped || player.getAttackCooldown() < 0.9f) {
+            return null;
+        }
+        Look.at(player, prey.getEyeLocation());
+        player.attack(prey);
+        player.swingMainHand();
+        return prey.isDead() ? Pos.of(prey.getLocation()) : null;
+    }
+
+    /** An animal at one moment. {@code alive} is false once it has fallen and the drops are at {@code at}. */
+    private record Glance(Location at, boolean alive) {
     }
 }
