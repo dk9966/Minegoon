@@ -14,59 +14,70 @@ import org.junit.jupiter.api.Test;
 
 class PaceTest {
 
-    private static final int RUN = 3;
-
     @Test
     void holdsTheJumpOnOpenGround() {
-        assertEquals(Pace.Kind.OPEN, Pace.kind(line(6, Move.TRAVERSE, 1, 0), 0, RUN, flat(false)));
+        assertEquals(Pace.Kind.OPEN, Pace.kind(line(6, Move.TRAVERSE, 1, 0), 0, flat(false)));
     }
 
     @Test
     void tapsTheJumpUnderATwoBlockCeiling() {
-        assertEquals(Pace.Kind.LOW, Pace.kind(line(6, Move.TRAVERSE, 1, 0), 0, RUN, flat(true)));
+        assertEquals(Pace.Kind.LOW, Pace.kind(line(6, Move.TRAVERSE, 1, 0), 0, flat(true)));
     }
 
     @Test
-    void tapsRatherThanHoldsWhenTheTunnelStartsInsideTheRun() {
+    void tapsOnTheBlockBeforeATunnelAndHoldsUntilThen() {
         List<Step> steps = line(6, Move.TRAVERSE, 1, 0);
-        assertEquals(Pace.Kind.LOW, Pace.kind(steps, 0, RUN, (x, y, z) -> {
+        Pace.World world = (x, y, z) -> {
             if (y < 0) {
                 return STANDABLE;
             }
             return y >= 2 && x >= 3 ? STANDABLE : PASSABLE;
-        }));
+        };
+        assertEquals(Pace.Kind.OPEN, Pace.kind(steps, 0, world));
+        assertEquals(Pace.Kind.LOW, Pace.kind(steps, 2, world));
     }
 
     @Test
-    void tapsThroughAShortTunnelButDoesNotHoldAShortOpenJump() {
-        assertEquals(Pace.Kind.LOW, Pace.kind(line(2, Move.TRAVERSE, 1, 0), 0, RUN, flat(true)));
-        assertEquals(Pace.Kind.NONE, Pace.kind(line(2, Move.TRAVERSE, 1, 0), 0, RUN, flat(false)));
-        assertEquals(Pace.Kind.NONE, Pace.kind(line(1, Move.TRAVERSE, 1, 0), 0, RUN, flat(true)));
+    void jumpsAShortRunAndNotTheStepItStopsOn() {
+        assertEquals(Pace.Kind.OPEN, Pace.kind(line(2, Move.TRAVERSE, 1, 0), 0, flat(false)));
+        assertEquals(Pace.Kind.LOW, Pace.kind(line(2, Move.TRAVERSE, 1, 0), 0, flat(true)));
+        assertEquals(Pace.Kind.NONE, Pace.kind(line(1, Move.TRAVERSE, 1, 0), 0, flat(true)));
+        assertEquals(Pace.Kind.NONE, Pace.kind(line(6, Move.TRAVERSE, 1, 0), 5, flat(false)));
     }
 
     @Test
-    void doesNotJumpIntoATurn() {
+    void jumpsThroughATurn() {
         List<Step> steps = line(6, Move.TRAVERSE, 1, 0);
         steps.set(1, new Step(Move.TRAVERSE, new Pos(1, 0, 0), new Pos(1, 0, 1), 1, false));
-        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, RUN, flat(true)));
+        assertEquals(Pace.Kind.OPEN, Pace.kind(steps, 0, flat(false)));
+        assertEquals(Pace.Kind.LOW, Pace.kind(steps, 0, flat(true)));
     }
 
     @Test
     void doesNotJumpWithNoFloorNoHeadroomOrAnUnknownCeiling() {
         List<Step> steps = line(6, Move.TRAVERSE, 1, 0);
-        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, RUN, (x, y, z) -> {
+        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, (x, y, z) -> {
             if (y < 0) {
                 return x == 2 ? PASSABLE : STANDABLE;
             }
             return PASSABLE;
         }));
-        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, RUN, (x, y, z) -> y == 1 ? STANDABLE : y < 0 ? STANDABLE : PASSABLE));
-        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, RUN, (x, y, z) -> y >= 2 ? UNKNOWN : y < 0 ? STANDABLE : PASSABLE));
+        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, (x, y, z) -> y == 1 ? STANDABLE : y < 0 ? STANDABLE : PASSABLE));
+        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, (x, y, z) -> y >= 2 ? UNKNOWN : y < 0 ? STANDABLE : PASSABLE));
+    }
+
+    @Test
+    void doesNotJumpIntoATimedLeap() {
+        List<Step> steps = new ArrayList<>(line(1, Move.TRAVERSE, 1, 0));
+        steps.add(new Step(Move.PARKOUR, new Pos(1, 0, 0), new Pos(4, 0, 0), 1, false));
+        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, flat(false)));
+        steps.set(1, new Step(Move.FALL, new Pos(1, 0, 0), new Pos(1, -4, 0), 1, false));
+        assertEquals(Pace.Kind.NONE, Pace.kind(steps, 0, flat(false)));
     }
 
     @Test
     void holdsTheJumpOnAStraightDiagonal() {
-        assertEquals(Pace.Kind.OPEN, Pace.kind(line(6, Move.DIAGONAL, 1, 1), 0, RUN, flat(false)));
+        assertEquals(Pace.Kind.OPEN, Pace.kind(line(6, Move.DIAGONAL, 1, 1), 0, flat(false)));
     }
 
     private static Pace.World flat(boolean ceiling) {

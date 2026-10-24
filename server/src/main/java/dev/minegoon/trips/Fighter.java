@@ -544,7 +544,7 @@ public final class Fighter {
         /** A crit when falling; otherwise a sprinting hit for knockback. */
         private void hit(Player self, LivingEntity enemy, boolean crit) {
             lowerShield(self);
-            self.setSprinting(!crit && self.getFoodLevel() > 6);
+            self.setSprinting(!crit);
             double before = enemy.getHealth();
             self.attack(enemy);
             self.swingMainHand();
@@ -591,12 +591,17 @@ public final class Fighter {
             }
             if (reach > BAND_HIGH) {
                 float side = enemy instanceof AbstractSkeleton ? strafe : 0;
-                return new Controls(1, side, blocked || critJump(self, enemy, reach), !shielding);
+                return new Controls(1, side, sprintJump(self), !shielding);
             }
             if (reach < BAND_LOW) {
                 return new Controls(-0.6f, strafe, blocked, false);
             }
             return new Controls(0, strafe, blocked || critJump(self, enemy, reach), false);
+        }
+
+        /** Closing in is a sprint-jump: held where the ceiling is open, tapped under a two-block ceiling. */
+        private boolean sprintJump(Player self) {
+            return FakePlayer.grounded(self) && (headroom(self) || self.getTicksLived() % 3 == 0);
         }
 
         private boolean critJump(Player self, LivingEntity enemy, double reach) {
@@ -612,7 +617,7 @@ public final class Fighter {
             }
             float yaw = (float) Math.toDegrees(Math.atan2(-away.getX(), away.getZ()));
             FakePlayer.face(self, yaw, 0);
-            body.helper().drive(steer(self, new Controls(1, 0, FakePlayer.bumped(self) && FakePlayer.grounded(self), true)));
+            body.helper().drive(steer(self, new Controls(1, 0, sprintJump(self), true)));
             if (reach(self, enemy) > ENGAGE) {
                 fled = true;
                 return false;

@@ -11,12 +11,13 @@ import dev.minegoon.world.path.Step;
 import java.util.List;
 
 /**
- * Whether a sprint along a flat run should leave the ground.
+ * Whether a sprint on flat ground should leave the ground.
  *
- * <p>An open ceiling is a normal sprint-jump: the key is held, so the body
- * jumps again on the tick it lands. A two-block ceiling is faster still, but
- * only when the jump is tapped every {@link #HEADHITTER} ticks. Holding the
- * key there meets the ceiling at once and the run stutters instead of picking up speed.
+ * <p>The efficient way to travel is to sprint-jump the whole way, turns included.
+ * An open ceiling holds the jump, so the body leaves the ground again on the
+ * tick it lands. A two-block ceiling is faster still, but only when the jump is
+ * tapped every {@link #HEADHITTER} ticks. Holding the key there meets the ceiling
+ * at once and the run stutters instead of picking up speed.
  */
 final class Pace {
 
@@ -24,7 +25,7 @@ final class Pace {
     static final int HEADHITTER = 3;
 
     enum Kind {
-        /** No sprint-jump: the run turns, the landing is missing, or a block ahead is unknown. */
+        /** No sprint-jump: the landing is missing, the ceiling is unknown, or this is a stop, a fall, or a timed leap. */
         NONE,
         /** Ceiling high enough to jump and land at full stretch. */
         OPEN,
@@ -45,49 +46,46 @@ final class Pace {
     }
 
     /**
-     * {@code run} is how many steps past the current one a held jump needs.
-     * Fewer than that, and a full jump would land in a turn or off the end.
-     * A tap-jump under a ceiling only needs the next block. One low ceiling
-     * anywhere in the stretch makes the whole stretch a tap-jump, so a full
-     * jump never starts just before a tunnel.
+     * The current flat step, when another step follows it. The last step is a stop,
+     * and a running jump there overshoots. A parkour leap and a long fall time
+     * themselves. One low ceiling on this step or the next makes the jump a tap,
+     * so a held jump never starts in the block before a tunnel.
      */
-    static Kind kind(List<Step> steps, int index, int run, World world) {
-        Kind full = stretch(steps, index, run, world);
-        if (full != Kind.NONE) {
-            return full;
-        }
-        if (run > 1 && stretch(steps, index, 1, world) == Kind.LOW) {
-            return Kind.LOW;
-        }
-        return Kind.NONE;
-    }
-
-    private static Kind stretch(List<Step> steps, int index, int run, World world) {
-        if (index < 0 || index + run >= steps.size()) {
+    static Kind kind(List<Step> steps, int index, World world) {
+        if (index < 0 || index + 1 >= steps.size()) {
             return Kind.NONE;
         }
-        Step first = steps.get(index);
-        if (first.move() != Move.TRAVERSE && first.move() != Move.DIAGONAL) {
+        Step step = steps.get(index);
+        Step next = steps.get(index + 1);
+        if (!flat(step) || !jumpable(world, step) || timed(next)) {
             return Kind.NONE;
         }
-        boolean low = false;
-        for (int i = index; i <= index + run; i++) {
-            Step step = steps.get(i);
-            if (step.move() != first.move() || step.dx() != first.dx() || step.dz() != first.dz()
-                || step.to().y() != first.from().y()) {
+        boolean low = low(world, step);
+        if (flat(next)) {
+            if (!jumpable(world, next)) {
                 return Kind.NONE;
             }
-            if (!floor(world, step.to()) || !head(world, step.from()) || !head(world, step.to())) {
-                return Kind.NONE;
-            }
-            Roof from = roof(world, step.from());
-            Roof to = roof(world, step.to());
-            if (from == Roof.UNKNOWN || to == Roof.UNKNOWN) {
-                return Kind.NONE;
-            }
-            low |= from == Roof.LOW || to == Roof.LOW;
+            low |= low(world, next);
         }
         return low ? Kind.LOW : Kind.OPEN;
+    }
+
+    private static boolean flat(Step step) {
+        return (step.move() == Move.TRAVERSE || step.move() == Move.DIAGONAL) && step.from().y() == step.to().y();
+    }
+
+    /** A leap whose takeoff is its own step. Jumping early drops the body short of it. */
+    private static boolean timed(Step step) {
+        return step.move() == Move.PARKOUR || step.move() == Move.FALL;
+    }
+
+    private static boolean jumpable(World world, Step step) {
+        return floor(world, step.to()) && head(world, step.from()) && head(world, step.to())
+            && roof(world, step.from()) != Roof.UNKNOWN && roof(world, step.to()) != Roof.UNKNOWN;
+    }
+
+    private static boolean low(World world, Step step) {
+        return roof(world, step.from()) == Roof.LOW || roof(world, step.to()) == Roof.LOW;
     }
 
     private static boolean floor(World world, Pos feet) {

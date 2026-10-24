@@ -187,8 +187,7 @@ public final class Mover {
         }
         Means means = body.main().call(() -> {
             Player player = body.player();
-            Kit kit = new Kit(Placer.throwaways(player), player.getInventory().contains(Material.WATER_BUCKET),
-                player.getFoodLevel() > 6);
+            Kit kit = new Kit(Placer.throwaways(player), player.getInventory().contains(Material.WATER_BUCKET), true);
             return new Means(Digging.of(player, body.policy()), kit);
         });
         return Pathfinder.find(executor.untrusting(Terrain.of(view, executor.closing(means.digging()))), means.kit(), start, goal, favored,

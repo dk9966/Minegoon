@@ -64,8 +64,6 @@ public final class PathExecutor {
     /** Feet this far above the block's floor clear the block about to be placed under them. */
     private static final double PILLAR_PLACE = 1.02;
     private static final float CREEP = 0.4f;
-    /** Flat steps that must lie ahead before a sprint leaves the ground. */
-    private static final int RUN = 3;
 
     private sealed interface Order {
     }
@@ -417,15 +415,14 @@ public final class PathExecutor {
             } else if (stop && distance < SLOW_DOWN) {
                 forward = CREEP;
             }
-            boolean fed = player.getFoodLevel() > 6;
-            boolean sprint = !wet && fed && forward == 1f && step.move().horizontal();
+            boolean sprint = forward == 1f && step.move().horizontal();
             boolean jump = wet;
             switch (step.move()) {
                 case TRAVERSE, DIAGONAL -> jump |= hop(at, player, grounded, sprint);
                 case SWIM, DESCEND, FALL -> jump |= grounded && FakePlayer.bumped(player) && openAbove(at);
                 case ASCEND -> jump |= (grounded || FakePlayer.climbing(player)) && distance < ASCEND_JUMP;
                 case PARKOUR -> {
-                    sprint = fed && !wet;
+                    sprint = true;
                     jump |= grounded && along(step, at) >= TAKE_OFF;
                 }
                 case PILLAR -> {
@@ -450,18 +447,18 @@ public final class PathExecutor {
         }
 
         /**
-         * Sprint-jump on a straight flat run. In the open the jump is held, so it
-         * happens again the tick the body lands. Under a two-block ceiling it is
-         * tapped every {@link Pace#HEADHITTER} ticks: holding it there just bonks
-         * the ceiling and the run stutters. A bump only jumps when there is room
-         * to rise, which is how a one-block step is climbed without hopping in a tunnel.
+         * Sprint-jump on flat ground. In the open the jump is held, so it happens
+         * again the tick the body lands. Under a two-block ceiling it is tapped
+         * every {@link Pace#HEADHITTER} ticks: holding it there just bonks the
+         * ceiling and the run stutters. A bump only jumps when there is room to
+         * rise, which is how a one-block step is climbed without hopping in a tunnel.
          */
         private boolean hop(Location at, Player player, boolean grounded, boolean sprint) {
             if (!grounded) {
                 return false;
             }
             Pace.Kind kind = sprint
-                ? Pace.kind(steps, index, RUN, (x, y, z) -> traits(body.live(), new Pos(x, y, z)))
+                ? Pace.kind(steps, index, (x, y, z) -> traits(body.live(), new Pos(x, y, z)))
                 : Pace.Kind.NONE;
             return switch (kind) {
                 case OPEN -> true;
