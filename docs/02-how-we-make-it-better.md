@@ -277,4 +277,5 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 - Phase 1 setup is in `03-deployment-strategy.md`.
 - Before porting Mine AI MCP's body, check whether their pinned Mineflayer fork works through ViaBackwards on 26.3, or needs rebasing onto upstream Mineflayer 4.39.0 (which natively supports up to 26.1).
 - Some of Mine AI MCP's development tools (Mine Labs) need private GitHub access. Plan to build our own lab scenarios instead of relying on theirs.
+- Combat is survival-first: port Mine AI MCP's whole survival module in Phase 2 and default it to `defend_only`. Reasoning, candidates, and lab scenarios are in `05-combat-and-survival.md`.
 - The testing method (same seeds, one setting at a time, harness-judged finish lines, read the first mistake in the logs) is recorded in `04-testing-dialogue.md`. Use it when Phase 3's lab starts.
