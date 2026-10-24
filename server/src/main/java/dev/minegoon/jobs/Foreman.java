@@ -35,7 +35,6 @@ import java.util.function.LongConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -72,12 +71,17 @@ public final class Foreman {
     private static final long RECOVER_WINDOW_MS = 4 * 60_000;
     private static final int RESPAWN_WAIT_TICKS = 100;
     private static final int OPEN_SKY = 12;
-    /** Tools from best to worst. The diamond and netherite rungs are only ever held, never made here. */
+    /**
+     * Tools from best to worst. The diamond and netherite rungs are only ever
+     * held, never made here. Wooden tools are no upgrade: a wooden pickaxe is
+     * only the way to stone, which the planner makes when it needs one. Swords
+     * start at copper, since the stone axe the mining trip packs hits harder
+     * than a stone sword.
+     */
     private static final List<List<Material>> UPGRADES = List.of(
         List.of(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.IRON_PICKAXE,
-            Material.COPPER_PICKAXE, Material.STONE_PICKAXE, Material.WOODEN_PICKAXE),
-        List.of(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.IRON_SWORD,
-            Material.COPPER_SWORD, Material.STONE_SWORD, Material.WOODEN_SWORD),
+            Material.COPPER_PICKAXE, Material.STONE_PICKAXE),
+        List.of(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.IRON_SWORD, Material.COPPER_SWORD),
         List.of(Material.SHIELD));
     /** What each upgrade is made from that another job may also want. */
     private static final Map<Material, Set<Material>> UPGRADE_FROM = Map.of(
@@ -93,6 +97,9 @@ public final class Foreman {
         Material.SHIELD, Set.of(Material.IRON_INGOT, Material.RAW_IRON));
     private static final Set<Material> NEVER_MADE = Set.of(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE,
         Material.NETHERITE_SWORD, Material.DIAMOND_SWORD);
+    /** A sword or an axe: the fighter swings either. */
+    private static final ItemSet WEAPONS =
+        ItemSet.of(Tag.ITEMS_SWORDS.getValues()).union(ItemSet.of(Tag.ITEMS_AXES.getValues()));
 
     private final Body body;
     private final JobBoard board;
@@ -460,7 +467,7 @@ public final class Foreman {
 
     /**
      * Standing rules that are just how the game works: eat before you collapse,
-     * replace a dying tool, carry what a dangerous trip needs, carry a sword
+     * replace a dying tool, carry what a dangerous trip needs, carry a weapon
      * after dark, and sleep when night catches you in the open. Returns true when
      * it queued that work in front.
      */
@@ -507,8 +514,8 @@ public final class Foreman {
             bedding = false;
             return false;
         }
-        if (!hasWeapon() && !rearming && !Tag.ITEMS_SWORDS.isTagged(task.goal())
-            && prepend(task, ItemSet.of(Material.WOODEN_SWORD), 1, "It's night, so I'll make a sword first.")) {
+        if (!hasWeapon() && !rearming && !WEAPONS.contains(task.goal())
+            && prepend(task, ItemSet.of(Material.STONE_AXE), 1, "It's night, so I'll make a stone axe first.")) {
             rearming = true;
             return true;
         }
@@ -760,11 +767,8 @@ public final class Foreman {
         };
     }
 
-    /** A sword or an axe: the fighter swings either. */
     private boolean hasWeapon() {
-        return body.main().call(() -> Stream.of(Tag.ITEMS_SWORDS, Tag.ITEMS_AXES)
-            .flatMap(tag -> tag.getValues().stream())
-            .anyMatch(weapon -> Hands.count(body.player(), ItemSet.of(weapon)) > 0));
+        return body.main().call(() -> Hands.count(body.player(), WEAPONS) > 0);
     }
 
     /** Up top, where food and logs are: a new plan packs for its trips again, since the last packing may have failed. */

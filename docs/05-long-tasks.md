@@ -431,7 +431,8 @@ What changed in the body:
 
 - **No digging for ore.** Ore searches walk through open ground only: cave mouths, ravine and pit bottoms, cave floors in sight, and ways down seen earlier in the search (`Prospector.knownOpenings`). Stairs and tunnels happen only when a player asks for digging. Iron is looked for in caves and cliffs, not on peaks, and stone in caves too.
 - **Packing for the whole task up front.** A trip supply marked `^` in `knowledge.yml` is only found up top (meat, logs). Before the first trip it is packed for every trip the task will make. Raw meat counts, since it is cooked below. Once packing is done, the goal is planned again from what is held. Otherwise the tool chain packing made on the way (table, wooden pickaxe, furnace) gets made a second time.
-- **Upgrades.** A better pickaxe, sword, or shield is made first whenever what is held makes one with no trip. The plan's own materials are not spent on it.
+- **Upgrades.** A better pickaxe, sword, or shield is made first whenever what is held makes one with no trip. The plan's own materials are not spent on it. Wooden tools and the stone sword are never upgrades: the spare planks after the wooden pickaxe used to become a wooden sword, then a stone sword, before the stone pickaxe was even made.
+- **Stone kit.** The mining trip (iron) packs a stone axe and a stone shovel next to the stone pickaxes. The axe chops and is the weapon until iron; the shovel digs dirt and gravel. With no weapon at night, the helper makes a stone axe, not a wooden sword.
 - **Night.** Without armor, nightfall up top is a reason to stop. With a weapon and some food, when the rest of the job is in the caves, it drops the meat still to hunt and heads down. Otherwise it uses a bed it has or can make, or digs in until morning.
 - **Mobs.** `Bestiary` knows every mob's health, damage, and tactic. Each fight weighs the whole group against the helper's weapon, armor, health, and shield, and backs off or pillars up when the group is too much. Endermen are never looked at. These were added in this round:
   - A fight is dropped when another creeper closes in.
@@ -457,7 +458,7 @@ What the tries showed. Times are seconds since the ask.
 | 17 | iron search, 2000 s | 1, creeper | Reached a stone pickaxe and the iron search by 700 s. It found no way down deeper than y=63 in 600 blocks of walking, and died in the second night while backing off from a group. |
 | 19 | iron search, 2100 s | 2, zombie then creeper | With the sight checks shared out between heights it walked to cave mouths, but every one in sight was shallow (y=63 to 79). Night 1 cost two minutes of backing off one creeper 33 times. In the second night a zombie killed it mid-fight, then a creeper killed it just after respawning with nothing to fight with. |
 
-The surface now takes about 10 minutes: logs, a wooden pickaxe, cobblestone from a cave mouth, swords, a stone pickaxe, and some meat. What is still missing is a way down. On this seed the openings in sight near spawn are shallow, so the iron search walks the surface for 20 minutes or more. That runs into a second night with no armor, which is where every death since try 16 happened.
+The surface now takes about 10 minutes: logs, a wooden pickaxe, cobblestone from a cave mouth, swords, a stone pickaxe, and some meat. (Since these tries, the swords are gone: it goes wooden pickaxe, cobblestone, then a stone pickaxe, axe, and shovel. Not yet run.) What is still missing is a way down. On this seed the openings in sight near spawn are shallow, so the iron search walks the surface for 20 minutes or more. That runs into a second night with no armor, which is where every death since try 16 happened.
 
 ### Heading for mountains, not the water
 

@@ -114,9 +114,13 @@ find:
 # supply made only when what is held already covers it.
 trips:
   # Stairs down to y=14 and a branch mine can wear out a stone pickaxe, but most
-  # iron is found well above that, and a broken pickaxe is replaced anyway.
+  # iron is found well above that, and a broken pickaxe is replaced anyway. The
+  # rest of the stone kit comes from the same cobblestone: an axe, which chops
+  # and is the weapon until iron, and a shovel for dirt and gravel.
   mine:
     stone_pickaxe|copper_pickaxe|iron_pickaxe|diamond_pickaxe?: 2
+    stone_axe|copper_axe|iron_axe|diamond_axe|netherite_axe: 1
+    stone_shovel|copper_shovel|iron_shovel|diamond_shovel|netherite_shovel: 1
   # Down open caves, ravines and pits, with no digging on the way, and back up
   # only once the job is done: a second pickaxe, since the one in use digs
   # everything; a sword and a shield for what lives down there; a water bucket
