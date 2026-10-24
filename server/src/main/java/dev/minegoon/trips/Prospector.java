@@ -21,6 +21,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.logging.Logger;
 import org.bukkit.Material;
 import org.bukkit.Tag;
@@ -75,16 +78,22 @@ public final class Prospector {
     private static final int HORIZON = 256;
     private static final int HORIZON_STEP = 16;
     /**
-     * What a direction that is all mountain, or all water, is worth against
-     * one unseen chunk that way. A walk toward the sea finds no caves, ore or
-     * herds, so water counts against every search.
+     * How much more an unseen chunk toward mountains is worth than one toward
+     * plain land, for a search that wants a way underground. Toward water an
+     * unseen chunk is worth nothing: a walk out to sea finds no caves, ore or
+     * herds.
      */
-    private static final double MOUNTAIN_PULL = 30;
-    private static final double WATER_PUSH = 30;
+    private static final double MOUNTAIN_PULL = 2;
     private static final int SHORE = 6;
+    /** Blocks of walking that one block of height is worth, down a way under the ground or up to a view. */
+    private static final double WALK_PER_BLOCK = 4;
     private static final Set<String> MOUNTAINS = Set.of("jagged_peaks", "frozen_peaks", "stony_peaks",
         "snowy_slopes", "grove", "meadow", "cherry_grove", "windswept_hills", "windswept_gravelly_hills",
         "windswept_forest", "windswept_savanna");
+    /** Biomes by the water. A search that roams one of these goes to the shore instead of away from it. */
+    private static final Set<String> WATERSIDE = Set.of("river", "frozen_river", "beach", "snowy_beach",
+        "stony_shore", "swamp", "mangrove_swamp", "ocean", "deep_ocean", "warm_ocean", "lukewarm_ocean",
+        "deep_lukewarm_ocean", "cold_ocean", "deep_cold_ocean", "frozen_ocean", "deep_frozen_ocean");
     /** The knowledge entry for ground a seed can be planted in. */
     public static final String SOIL = "soil";
 
@@ -303,7 +312,7 @@ public final class Prospector {
                 movesOnRung = 0;
                 return;
             }
-            frontier(checkpoint, deep());
+            frontier(checkpoint, deep(), waterside());
             log.info(who + " looking for " + what + ": new ground at " + mover.feet());
             places++;
             dryPasses++;
@@ -313,6 +322,22 @@ public final class Prospector {
 
         private boolean deep() {
             return find.best() != null && find.best() < DEEP_BEST;
+        }
+
+        private boolean waterside() {
+            return find.biomes().stream().anyMatch(WATERSIDE::contains);
+        }
+
+        /**
+         * Spots worth walking to look from: off the shore, where a look shows
+         * land, unless the search is for something found by the water.
+         */
+        private Predicate<Pos> inland() {
+            if (waterside()) {
+                return at -> true;
+            }
+            WorldView view = vision.around();
+            return at -> !shore(view, at);
         }
 
         private int limit(Way way) {
@@ -325,7 +350,8 @@ public final class Prospector {
 
         private boolean move(Way way, Checkpoint checkpoint) {
             return switch (way) {
-                case CLIFF -> walkToFirst(vision.cliffs(TARGETS).stream().map(Vision.Cliff::foot).toList(), checkpoint);
+                case CLIFF -> walkToFirst(vision.cliffs(TARGETS).stream().map(Vision.Cliff::foot).filter(inland())
+                    .toList(), checkpoint);
                 case PEAK -> peak(checkpoint);
                 case CAVE -> cave(checkpoint);
                 case CAVERN -> cavern(checkpoint);
@@ -366,11 +392,13 @@ public final class Prospector {
         }
 
         /**
-         * Down the deepest way in sight that is open ground: a cave floor, or
-         * the bottom of a ravine or pit, but not below where the thing stops
-         * showing up. Big caves reach the surface through ravines and wide
-         * mouths, so those come first. Nothing is dug unless a player asked for
-         * digging; with no way down in sight the search moves on to new ground.
+         * Down the open way in sight that gains the most depth for the walk to
+         * it: a cave floor, or the bottom of a ravine or pit, but not below
+         * where the thing stops showing up, and not on a shore, where the lowest
+         * dry ground is only a river bank or a beach. Big caves reach the surface
+         * through ravines and wide mouths, so those come first. Nothing is dug
+         * unless a player asked for digging; with no way down in sight the
+         * search moves on to new ground.
          */
         private boolean cave(Checkpoint checkpoint) {
             Pos feet = mover.feet();
@@ -383,9 +411,11 @@ public final class Prospector {
             }
             List<Pos> openings = new ArrayList<>(vision.shafts(feet.y() - SHAFT_DEPTH, TARGETS));
             openings.addAll(vision.caves(feet.y() - 3, TARGETS));
+            openings.removeIf(inland().negate());
             openings.forEach(Prospector.this::rememberOpening);
             openings.removeIf(pos -> pos.y() < find.low());
-            openings.sort((a, b) -> Integer.compare(a.y(), b.y()));
+            Comparator<Pos> down = worthTheWalk(feet, pos -> feet.y() - pos.y());
+            openings.sort(down);
             List<Pos> deeper = openings.stream().filter(pos -> pos.y() <= feet.y() - 4).toList();
             if (walkToFirst(deeper, checkpoint)) {
                 return true;
@@ -393,7 +423,7 @@ public final class Prospector {
             List<Pos> remembered = knownOpenings.stream()
                 .filter(pos -> pos.y() >= find.low() && pos.y() <= feet.y() - 4)
                 .filter(pos -> Math.hypot(pos.x() - feet.x(), pos.z() - feet.z()) <= OPENING_WITHIN)
-                .sorted((a, b) -> Double.compare(a.distanceSquared(feet), b.distanceSquared(feet)))
+                .sorted(down)
                 .toList();
             if (walkToFirst(remembered, checkpoint)) {
                 return true;
@@ -414,7 +444,8 @@ public final class Prospector {
             if (find.best() != null && feet.y() <= find.best() + CAVERN_ABOVE) {
                 return false;
             }
-            return walkToFirst(vision.peaks(feet.y() + PEAK_ABOVE, TARGETS), checkpoint);
+            return walkToFirst(vision.peaks(feet.y() + PEAK_ABOVE, TARGETS).stream().filter(inland())
+                .sorted(worthTheWalk(feet, pos -> pos.y() - feet.y())).toList(), checkpoint);
         }
 
         /**
@@ -461,12 +492,11 @@ public final class Prospector {
             }
             List<Pos> lookouts = lookouts();
             double apart = Math.pow(vision.radius() / 2.0, 2);
-            WorldView view = vision.around();
             List<Pos> patches = vision.patches().stream()
                 .filter(patch -> find.biomes().contains(patch.biome()))
                 .sorted(Comparator.comparingInt(patch -> find.biomes().indexOf(patch.biome())))
                 .map(Vision.Patch::at)
-                .filter(at -> !shore(view, at))
+                .filter(inland())
                 .filter(at -> nearest(lookouts, at) >= apart)
                 .limit(TARGETS)
                 .toList();
@@ -501,20 +531,27 @@ public final class Prospector {
 
     /**
      * Toward the compass direction with the most ground not yet looked at,
-     * keeping the last heading when it is as good. Underground that is a walk
-     * along the cave; a tunnel only when a player asked for digging. When no
-     * walk gets anywhere, out to the surface, by stairs only if nothing else
-     * works: being shut in is never a reason to stay. Not {@link Dry}: the thing
-     * may be out there, the helper just cannot move, and nobody's advice changes that.
-     * A {@code deep} search on the surface walks twice as far and leans toward
-     * mountains in sight.
+     * keeping the last heading when it is as good. On the surface that ground
+     * is weighed by the land out to the horizon that way, so the walk heads
+     * inland, and for a {@code deep} search toward mountains, walking twice as
+     * far. Underground that is a walk along the cave; a tunnel only when a
+     * player asked for digging. When no walk gets anywhere, out to the surface,
+     * by stairs only if nothing else works: being shut in is never a reason to
+     * stay. Not {@link Dry}: the thing may be out there, the helper just cannot
+     * move, and nobody's advice changes that.
      */
-    private void frontier(Checkpoint checkpoint, boolean deep) {
+    private void frontier(Checkpoint checkpoint, boolean deep, boolean waterside) {
         Pos feet = mover.feet();
         int surface = surface(feet);
         boolean buried = surface - feet.y() > BURIED;
         boolean far = deep && !buried;
-        double[] lean = buried ? new double[COMPASS.length] : lean(feet, deep);
+        int[] unseen = unseen(vision.radius() / 16 + 6,
+            (dx, dz) -> seen.contains(WorldView.key((feet.x() >> 4) + dx, (feet.z() >> 4) + dz)));
+        double[] land = land(buried ? List.of() : vision.horizon(HORIZON, HORIZON_STEP), feet, deep, waterside);
+        double[] worth = new double[COMPASS.length];
+        for (int i = 0; i < COMPASS.length; i++) {
+            worth[i] = unseen[i] * land[i] + (i == heading ? 1 : 0);
+        }
         boolean digging = orders.ways().contains(Way.DIG) && tunneler.armed();
         if (buried && digging) {
             tunneler.turn();
@@ -526,8 +563,7 @@ public final class Prospector {
         for (int i = 0; i < COMPASS.length; i++) {
             order.add(i);
         }
-        order.sort((a, b) -> Double.compare(unseen(feet, b) + lean[b] + (b == heading ? 1 : 0),
-            unseen(feet, a) + lean[a] + (a == heading ? 1 : 0)));
+        order.sort((a, b) -> Double.compare(worth[b], worth[a]));
         int reach = far ? DEEP_FRONTIER : FRONTIER;
         for (int direction : order) {
             int[] step = COMPASS[direction];
@@ -553,8 +589,15 @@ public final class Prospector {
         throw new ActionFailed("I can't find a way out of here to new ground");
     }
 
-    /** Water, or land a few steps from it: beaches and river banks, where a walk shows mostly water. */
+    /**
+     * Water, or land a few steps from it: beaches and river banks, where a
+     * walk shows mostly water. A cave well under the ground is not on a shore,
+     * whatever is above it.
+     */
     private static boolean shore(WorldView view, Pos at) {
+        if (ground(view, at.x(), at.z()) - at.y() > BURIED) {
+            return false;
+        }
         for (int[] d : new int[][] {{0, 0}, {SHORE, 0}, {-SHORE, 0}, {0, SHORE}, {0, -SHORE}}) {
             int x = at.x() + d[0];
             int z = at.z() + d[1];
@@ -589,16 +632,18 @@ public final class Prospector {
     }
 
     /**
-     * For each compass direction, how much the land out to the horizon that
-     * way is worth walking into: less for each share of it that is water, and
-     * for a {@code deep} search more for each share that is mountain, a
-     * mountain biome or ground well above the feet.
+     * For each compass direction, what one unseen chunk that way is worth,
+     * judged from the land out to the horizon there: the share of it that is
+     * land, with mountain, a mountain biome or ground well above the feet,
+     * counting {@link #MOUNTAIN_PULL} times extra for a {@code deep} search.
+     * A {@code waterside} search counts water as land. With nothing in sight
+     * that way, a chunk is worth one.
      */
-    private double[] lean(Pos feet, boolean deep) {
+    static double[] land(List<Vision.Column> horizon, Pos feet, boolean deep, boolean waterside) {
         int[] all = new int[COMPASS.length];
         int[] high = new int[COMPASS.length];
         int[] wet = new int[COMPASS.length];
-        for (Vision.Column column : vision.horizon(HORIZON, HORIZON_STEP)) {
+        for (Vision.Column column : horizon) {
             Pos at = column.at();
             int dx = at.x() - feet.x();
             int dz = at.z() - feet.z();
@@ -613,13 +658,23 @@ public final class Prospector {
                 high[direction]++;
             }
         }
-        double[] lean = new double[COMPASS.length];
+        double[] land = new double[COMPASS.length];
         for (int i = 0; i < COMPASS.length; i++) {
-            if (all[i] > 0) {
-                lean[i] = (deep ? MOUNTAIN_PULL * high[i] / all[i] : 0) - WATER_PUSH * wet[i] / all[i];
-            }
+            double dry = waterside ? all[i] : all[i] - wet[i];
+            land[i] = all[i] == 0 ? 1 : (dry + (deep ? MOUNTAIN_PULL * high[i] : 0)) / all[i];
         }
-        return lean;
+        return land;
+    }
+
+    /**
+     * Best first, trading height against the walk: each block a spot is
+     * {@code gain} blocks closer to where the search wants to be counts as
+     * {@link #WALK_PER_BLOCK} blocks less walking. A way down at hand beats one
+     * a little deeper across the valley.
+     */
+    static Comparator<Pos> worthTheWalk(Pos feet, ToIntFunction<Pos> gain) {
+        return Comparator.comparingDouble(
+            pos -> Math.hypot(pos.x() - feet.x(), pos.z() - feet.z()) / WALK_PER_BLOCK - gain.applyAsInt(pos));
     }
 
     /** The {@link #COMPASS} direction nearest to an offset. */
@@ -628,17 +683,19 @@ public final class Prospector {
         return Math.floorMod((int) Math.round(turns * COMPASS.length), COMPASS.length);
     }
 
-    /** Chunks in a direction, out past what is in sight now, that the helper has not looked at. */
-    private int unseen(Pos feet, int direction) {
-        int[] step = COMPASS[direction];
-        int count = 0;
-        int far = vision.radius() / 16 + 6;
-        for (int reach = 2; reach <= far; reach++) {
-            for (int side = -2; side <= 2; side++) {
-                int cx = (feet.x() >> 4) + step[0] * reach - step[1] * side;
-                int cz = (feet.z() >> 4) + step[1] * reach + step[0] * side;
-                if (!seen.contains(WorldView.key(cx, cz))) {
-                    count++;
+    /**
+     * For each compass direction, the chunks within {@code far} chunks, in the
+     * eighth of the circle around that direction, whose offset was not
+     * {@code seen}. Every direction counts the same area, so a diagonal is not
+     * favoured for reaching further.
+     */
+    static int[] unseen(int far, BiPredicate<Integer, Integer> seen) {
+        int[] count = new int[COMPASS.length];
+        for (int dx = -far; dx <= far; dx++) {
+            for (int dz = -far; dz <= far; dz++) {
+                int d = dx * dx + dz * dz;
+                if (d > 0 && d <= far * far && !seen.test(dx, dz)) {
+                    count[compass(dx, dz)]++;
                 }
             }
         }
