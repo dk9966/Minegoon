@@ -132,7 +132,10 @@ public final class Reflexes {
         Fighter.lowerShield(player);
         Location at = player.getLocation();
         Look.toward(player, 2 * at.getX() - creeper.getLocation().getX(), 2 * at.getZ() - creeper.getLocation().getZ());
-        helper.override(new Controls(1, 0, FakePlayer.bumped(player) && FakePlayer.grounded(player), true));
+        boolean room = player.getWorld().getBlockAt(player.getLocation().getBlockX(),
+            player.getLocation().getBlockY() + 2, player.getLocation().getBlockZ()).isPassable();
+        boolean jump = FakePlayer.grounded(player) && (room || player.getTicksLived() % 3 == 0);
+        helper.override(new Controls(1, 0, jump, true));
         return true;
     }
 

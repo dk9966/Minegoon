@@ -44,7 +44,8 @@ public final class PathExecutor {
     public static final double PLAN_AHEAD = 150;
 
     private static final Logger LOG = Logger.getLogger("Minegoon");
-    private static final int LOOK_AHEAD = 4;
+    /** A sprint-jump covers several blocks before it lands, and that landing still has to count as on the route. */
+    private static final int LOOK_AHEAD = 8;
     private static final int LOOK_BACK = 3;
     private static final int OFF_ROUTE_TICKS = 40;
     private static final double OFF_ROUTE_FAR = 3;
@@ -63,8 +64,6 @@ public final class PathExecutor {
     /** Feet this far above the block's floor clear the block about to be placed under them. */
     private static final double PILLAR_PLACE = 1.02;
     private static final float CREEP = 0.4f;
-    /** Steps in a straight line ahead, with headroom, before a sprint turns into sprint-jumping. */
-    private static final int RUN = 3;
 
     private sealed interface Order {
     }
@@ -254,15 +253,38 @@ public final class PathExecutor {
             return GO;
         }
 
-        /** The feet block. A swimming body bobs below the surface it swims along, so one block low still counts. */
+        /**
+         * The feet block. A swimming body bobs below the surface it swims along, so one
+         * block low still counts. A jump lifts the feet into the block above the route;
+         * that still counts as the block under them, or the route thinks the jump left it
+         * and turns back.
+         */
         private Pos feet(Location at, Player player) {
-            if (!player.isInWater()) {
-                return Footing.of(player, body.live());
+            if (player.isInWater()) {
+                Pos feet = Pos.standing(at);
+                Pos above = feet.offset(0, 1, 0);
+                Step step = steps.get(index);
+                return !step.allows(feet) && step.allows(above) ? above : feet;
             }
-            Pos feet = Pos.standing(at);
-            Pos above = feet.offset(0, 1, 0);
-            Step step = steps.get(index);
-            return !step.allows(feet) && step.allows(above) ? above : feet;
+            Pos feet = Footing.of(player, body.live());
+            if (!FakePlayer.grounded(player) && !FakePlayer.climbing(player)) {
+                Pos below = feet.offset(0, -1, 0);
+                if (!onRoute(feet) && onRoute(below)) {
+                    return below;
+                }
+            }
+            return feet;
+        }
+
+        private boolean onRoute(Pos cell) {
+            int from = Math.max(0, index - LOOK_BACK);
+            int to = Math.min(steps.size(), index + 1 + LOOK_AHEAD);
+            for (int i = from; i < to; i++) {
+                if (steps.get(i).allows(cell)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /** Where the body is and what is around it, for a give-up message someone can act on. */
@@ -383,15 +405,21 @@ public final class PathExecutor {
             double distance = offCentre(to, at);
             boolean grounded = FakePlayer.grounded(player);
             boolean wet = player.isInWater();
-            if (distance > ARRIVED) {
-                Look.toward(player, to.x() + 0.5, to.z() + 0.5);
+            aim(step, at, player);
+            // Only the block the route has to stop on is taken slowly. Zeroing forward on every
+            // centre cuts the speed that sprint and a jump had just built up.
+            boolean stop = needsCentre(next);
+            float forward = 1;
+            if (stop && distance <= ARRIVED) {
+                forward = 0;
+            } else if (stop && distance < SLOW_DOWN) {
+                forward = CREEP;
             }
-            float forward = distance <= ARRIVED ? 0 : needsCentre(next) && distance < SLOW_DOWN ? CREEP : 1;
-            boolean sprint = !wet && step.move().horizontal() && next != null && straightOn(step, next);
+            boolean sprint = forward == 1f && step.move().horizontal();
             boolean jump = wet;
             switch (step.move()) {
-                case TRAVERSE, DIAGONAL, SWIM, DESCEND, FALL ->
-                    jump |= grounded && (FakePlayer.bumped(player) || sprint && player.isSprinting() && openRun());
+                case TRAVERSE, DIAGONAL -> jump |= hop(at, player, grounded, sprint);
+                case SWIM, DESCEND, FALL -> jump |= grounded && FakePlayer.bumped(player) && openAbove(at);
                 case ASCEND -> jump |= (grounded || FakePlayer.climbing(player)) && distance < ASCEND_JUMP;
                 case PARKOUR -> {
                     sprint = true;
@@ -418,24 +446,51 @@ public final class PathExecutor {
             return new Controls(forward, 0, jump, sprint && !hold, hold);
         }
 
-        /** The next few steps run straight and level with room to jump, so sprint-jumping is safe and faster. */
-        private boolean openRun() {
-            if (index + RUN >= steps.size()) {
+        /**
+         * Sprint-jump on flat ground. In the open the jump is held, so it happens
+         * again the tick the body lands. Under a two-block ceiling it is tapped
+         * every {@link Pace#HEADHITTER} ticks: holding it there just bonks the
+         * ceiling and the run stutters. A bump only jumps when there is room to
+         * rise, which is how a one-block step is climbed without hopping in a tunnel.
+         */
+        private boolean hop(Location at, Player player, boolean grounded, boolean sprint) {
+            if (!grounded) {
                 return false;
             }
-            Step first = steps.get(index);
-            BlockReader live = body.live();
-            for (int i = index; i <= index + RUN; i++) {
-                Step step = steps.get(i);
-                Pos to = step.to();
-                if (step.move() != Move.TRAVERSE || !straightOn(first, step) || to.y() != first.from().y()
-                    || !has(traits(live, to.offset(0, -1, 0)), STANDABLE)
-                    || !has(traits(live, to.offset(0, 2, 0)), PASSABLE)
-                    || !has(traits(live, step.from().offset(0, 2, 0)), PASSABLE)) {
-                    return false;
+            Pace.Kind kind = sprint
+                ? Pace.kind(steps, index, (x, y, z) -> traits(body.live(), new Pos(x, y, z)))
+                : Pace.Kind.NONE;
+            return switch (kind) {
+                case OPEN -> true;
+                case LOW -> routeTicks % Pace.HEADHITTER == 0;
+                case NONE -> FakePlayer.bumped(player) && openAbove(at);
+            };
+        }
+
+        /** Faces the block ahead once this one is half done, so the head never snaps back to a block already passed. */
+        private void aim(Step step, Location at, Player player) {
+            Step look = step;
+            double span = Math.abs(step.dx()) + Math.abs(step.dz());
+            if (span > 0 && along(step, at) > span * 0.5) {
+                int last = Math.min(steps.size() - 1, index + 2);
+                for (int i = index; i < last; i++) {
+                    Step ahead = steps.get(i + 1);
+                    if (!straightOn(steps.get(i), ahead)) {
+                        break;
+                    }
+                    look = ahead;
                 }
             }
-            return true;
+            Pos to = look.to();
+            if (offCentre(to, at) > ARRIVED) {
+                Look.toward(player, to.x() + 0.5, to.z() + 0.5);
+            }
+        }
+
+        private boolean openAbove(Location at) {
+            Pos feet = Pos.standing(at);
+            int above = traits(body.live(), feet.offset(0, 2, 0));
+            return has(above, PASSABLE) && !has(above, UNKNOWN);
         }
 
         private boolean missingFloor(BlockReader live, Step step, Pos floor) {
