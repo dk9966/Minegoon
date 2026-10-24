@@ -458,3 +458,13 @@ What the tries showed. Times are seconds since the ask.
 | 19 | iron search, 2100 s | 2, zombie then creeper | With the sight checks shared out between heights it walked to cave mouths, but every one in sight was shallow (y=63 to 79). Night 1 cost two minutes of backing off one creeper 33 times. In the second night a zombie killed it mid-fight, then a creeper killed it just after respawning with nothing to fight with. |
 
 The surface now takes about 10 minutes: logs, a wooden pickaxe, cobblestone from a cave mouth, swords, a stone pickaxe, and some meat. What is still missing is a way down. On this seed the openings in sight near spawn are shallow, so the iron search walks the surface for 20 minutes or more. That runs into a second night with no armor, which is where every death since try 16 happened.
+
+### Heading for mountains, not the water
+
+October 24, 2026. Watching a diamond run with the chase camera, the helper walked toward the sea instead of the mountains in view. Three things in `Prospector` caused it:
+
+- **The walk to new ground favoured diagonals.** Each compass direction counted unseen chunks along a strip, and a diagonal strip reaches about 40% further, so a diagonal had roughly 20 more unseen chunks before anything was walked. The mountain and water lean was a bonus of at most 30 and usually 5 to 15, so it rarely decided anything. Now every direction counts the same eighth of a circle, and each unseen chunk is multiplied by what the land that way looks like: 0 for water, 1 for land, 3 for mountain on a deep search.
+- **"Deepest first" meant "lowest first".** The cave move walked to the lowest opening in sight, however far. On the surface the lowest dry ground with a wall beside it is a river bank or the coast. Openings and peaks are now ranked by height gained minus a quarter of the walk to them, so a way down 10 blocks deep 20 blocks off beats one 15 deep 200 blocks off.
+- **Only roaming skipped shores.** Cliffs, cave openings and peaks on a shore are now skipped too. A search that roams a waterside biome (water, sand, clay, sugar cane, gravel) no longer skips shores or leans away from water. Before, roaming for water skipped every river patch, since a river patch is water.
+
+Not run on the seed yet. The next armor try should show whether the iron and diamond searches reach a deep way down sooner.
