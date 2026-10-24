@@ -425,7 +425,7 @@ public final class Session {
         listen(new BreakGuard(helper, policy, results::guardCaught, plugin.getLogger()));
         admin = new AdminCommand(helper, commands, desk, foreman, missions, peek, settings.lab());
 
-        reflexes = new Reflexes(helper, fighter::engaged);
+        reflexes = new Reflexes(helper, fighter::engaged, fighter::running);
         helper.spawn();
         foreman.resumeAfterRestart();
         plugin.getLogger().info(helperName + " is in " + worldName + ".");

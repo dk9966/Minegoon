@@ -20,7 +20,7 @@ import org.bukkit.inventory.meta.Damageable;
 
 /**
  * The rules trips check between moves. Most trouble is handled on the spot:
- * anything attacking gets fought, low health is waited out while eating, and a
+ * anything attacking is run from (see {@link Fighter#defend}), low health is waited out while eating, and a
  * full inventory drops its junk. What needs other work first is thrown as
  * {@link Needed}: no food left, no room even after dropping junk, or the last
  * tool for the job about to break.

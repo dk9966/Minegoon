@@ -68,7 +68,8 @@ public final class MissionRunner {
         Survival facts to plan with: wood, then a crafting table and wooden pickaxe; stone for stone tools and a
         furnace; iron (best near y=14, in caves and cliffs) smelted for an iron pickaxe, which diamond needs;
         diamonds near y=-59, reached through big caves and deep ravines, which mountains have most of; coal or
-        wood for fuel; cooked meat for food; the helper does not dig tunnels or stairs unless the player asked.
+        wood for fuel; cooked meat for food; the helper does not dig tunnels or stairs unless the player asked;
+        the helper runs from monsters and fights only one that keeps up, so plan around them, not to kill them.
         Last, done_when: checks the game can test once the whole request is done (the helper has N of an item,
         or is within R blocks of a player). Choose checks that all hold at the end, after anything is handed
         over. Players read the plan in chat, so write it in plain words.
