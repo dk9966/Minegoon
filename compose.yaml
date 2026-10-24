@@ -1,0 +1,7 @@
+services:
+  body:
+    build:
+      context: .
+      dockerfile: packages/body/Dockerfile
+    env_file: .env
+    restart: unless-stopped
