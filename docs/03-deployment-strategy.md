@@ -129,6 +129,7 @@ services:
 Notes:
 - `127.0.0.1:25565` means only your Mac can connect. That's what keeps offline mode safe.
 - Make yourself operator through the server console (`docker compose exec minecraft rcon-cli op <yourname>`). **Never op the bot.** That's what keeps it legit.
+- Turn on Paper's anti-xray (`anticheat.anti-xray.enabled: true`, `engine-mode: 1`) in `data/config/paper-world-defaults.yml`. It's off by default. With it on, ores and chests buried in stone are sent to the bot as stone, so it can't x-ray. See `05-perception-and-exploration.md`.
 - A second copy of this service (different port and data folder) becomes the lab world for testing, where cheating during setup is allowed.
 
 ### The bot connection
@@ -190,6 +191,7 @@ If a new release breaks the translator badly, the fallback is to hold the server
 
 - The server port is bound to `127.0.0.1` (or to your home network or VPN only). Never port-forward it.
 - The bot isn't operator. Only you are.
+- Anti-xray is on in the real world. The lab can turn it off to measure what fairness costs.
 - API keys live in a `.env` file that is git-ignored.
 - Daily world backups (the itzg image can do this with its backup companion container, or with a simple copy job).
 - A spending limit set at each model provider.
