@@ -27,8 +27,9 @@ import org.bukkit.inventory.PlayerInventory;
  * water bucket under itself before a fall lands, get out of lava or off a
  * magma block, come up for air before it runs out, get clear of a hissing
  * creeper, eat when hungry, and hit monsters that come close. Eating uses the off hand so the tool in the main
- * hand stays put. Eating and hitting wait while a real fight has the body;
- * falls, burns and breathing do not. Main thread only.
+ * hand stays put. Eating and hitting wait while a real fight or a getaway has
+ * the body, and the creeper dodge waits for a fight; falls, burns and breathing
+ * do not. Main thread only.
  */
 public final class Reflexes {
 
@@ -57,14 +58,16 @@ public final class Reflexes {
 
     private final Helper helper;
     private final BooleanSupplier fighting;
+    private final BooleanSupplier running;
     private boolean dodging;
     private Pos poured;
     /** Came up short of air, and stays up until it has its breath back. */
     private boolean winded;
 
-    public Reflexes(Helper helper, BooleanSupplier fighting) {
+    public Reflexes(Helper helper, BooleanSupplier fighting, BooleanSupplier running) {
         this.helper = helper;
         this.fighting = fighting;
+        this.running = running;
     }
 
     public void tick() {
@@ -87,7 +90,7 @@ public final class Reflexes {
         if (clutch(player) || fighting.getAsBoolean()) {
             return;
         }
-        if (blast(player)) {
+        if (blast(player) || running.getAsBoolean()) {
             return;
         }
         eat(player, EAT_BELOW);

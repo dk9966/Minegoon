@@ -12,8 +12,10 @@ import dev.minegoon.world.Goal;
 import dev.minegoon.world.Pos;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -34,7 +36,8 @@ import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 /**
- * Melee fighting with the game's own physics. Every tick it aims, keeps its
+ * Getting away from monsters, and melee fighting with the game's own physics
+ * when there is no getting away; {@link #defend} decides which. In a fight, every tick it aims, keeps its
  * distance, and swings only at full charge, the way strong players do:
  * <ul>
  * <li>Critical hits come from a real jump, landing the swing on the way down.</li>
@@ -71,7 +74,8 @@ public final class Fighter {
     private static final int MAX_TICKS = 20 * 90;
     private static final int STALLED_TICKS = 20 * 10;
     private static final double LOST = 32;
-    private static final int MAX_FIGHTS = 8;
+    /** Getaways and fights in one defence before the trip carries on. */
+    private static final int MAX_ROUNDS = 8;
     /** Walks round to a monster the fight cannot reach straight on, before letting it go. */
     private static final int APPROACHES = 3;
     private static final double APPROACH_RANGE = 2;
@@ -80,6 +84,10 @@ public final class Fighter {
     /** How far a getaway goes, and how far every pursuer must be before it stops. */
     private static final int RUN = 24;
     private static final double CLEAR = 14;
+    /** A mob still in reach after this long sprinting away keeps up, so running from it does not work. */
+    private static final int KEEP_UP_TICKS = 40;
+    /** Getaways from the same mob before one the helper beats is fought instead, since it keeps coming back. */
+    private static final int SHAKE_OFF = 2;
     private static final int PILLAR = 2;
     private static final int HOLD_TICKS = 20 * 60;
     private static final int QUIET_TICKS = 20 * 3;
@@ -100,7 +108,10 @@ public final class Fighter {
     private final Body body;
     private final Mover mover;
     private volatile boolean engaged;
+    private volatile boolean running;
     private volatile int escapes;
+    /** How many getaways each mob still in the world has been run from. */
+    private final Map<UUID, Integer> shaken = new ConcurrentHashMap<>();
 
     public Fighter(Body body, Mover mover) {
         this.body = body;
@@ -112,38 +123,57 @@ public final class Fighter {
         return engaged;
     }
 
+    /** True while a getaway has the helper's body. Reflexes neither eat nor swing then, since both slow the sprint. */
+    public boolean running() {
+        return running;
+    }
+
     /** How many times so far a group was too much to fight. Compare two readings to see if one came between. */
     public int escapes() {
         return escapes;
     }
 
     /**
-     * Fights whatever hostile is coming for the helper, most urgent first, until
-     * none is. Before each fight it weighs the whole group against itself, and
-     * a group it would not beat with a third of its health to spare is not
-     * fought: against melee mobs that cannot climb it stands on a two-block
-     * pillar and hits down at them; against anything else it gets away.
+     * Deals with whatever hostile is coming for the helper, most urgent first,
+     * until none is. It runs: a sprinting player outpaces almost every mob,
+     * and a fight spends health the trip needs. It fights only
+     * <ul>
+     * <li>a mob that keeps up with the run, or the most urgent one when there
+     *     is no way to run. When the group is one it would not beat with a
+     *     third of its health to spare, and all of it melee mobs that cannot
+     *     climb, it stands on a two-block pillar and hits down at them instead;</li>
+     * <li>a group it beats that it has already run from {@link #SHAKE_OFF}
+     *     times, since that group follows it back to the work.</li>
+     * </ul>
      * Worker thread.
      */
     public void defend() {
-        for (int fights = 0; fights < MAX_FIGHTS; fights++) {
+        for (int round = 0; round < MAX_ROUNDS; round++) {
             Odds odds = body.main().call(this::sizeUp);
             if (odds == null) {
                 return;
             }
-            if (!odds.wins()) {
-                escape(odds);
+            UUID foe = odds.wins() && odds.persistent() ? odds.first() : getaway(odds);
+            if (foe == null) {
+                continue;
+            }
+            if (!odds.wins() && odds.pillar() && pillarUp()) {
+                holdHigh();
                 return;
             }
-            Tally tally = fight(odds.first());
+            Tally tally = fight(foe);
             if (tally.died() || tally.fled() || !tally.won() && tally.hits() == 0) {
                 return;
             }
         }
     }
 
-    /** The group after the helper, most urgent first, and whether fighting all of it is a win. */
-    private record Odds(List<UUID> foes, boolean wins, boolean pillar, Vector away, String names) {
+    /**
+     * The group after the helper, most urgent first, whether fighting all of it
+     * is a win, and whether every one of them has been run from enough times.
+     */
+    private record Odds(List<UUID> foes, boolean wins, boolean persistent, boolean pillar, Vector away,
+                        String names) {
         UUID first() {
             return foes.getFirst();
         }
@@ -186,22 +216,25 @@ public final class Fighter {
                 .normalize().multiply(2)));
         String names = ordered.stream().map(foe -> foe.getType().getKey().value()).distinct()
             .reduce((a, b) -> a + ", " + b).orElse("");
-        return new Odds(ordered.stream().map(Entity::getUniqueId).toList(), wins, pillar, away, names);
+        shaken.keySet().removeIf(id -> Bukkit.getEntity(id) == null);
+        boolean persistent = ordered.stream()
+            .allMatch(foe -> shaken.getOrDefault(foe.getUniqueId(), 0) >= SHAKE_OFF);
+        return new Odds(ordered.stream().map(Entity::getUniqueId).toList(), wins, persistent, pillar, away, names);
     }
 
     /**
-     * Too much to fight. A pillar two blocks up keeps zombies and the like
-     * from reaching, and it hits them from there; otherwise it walks away
-     * from the group until none is close. Worker thread.
+     * Sprints away from the group until nothing is after it within
+     * {@link #CLEAR} blocks or it has gone {@link #RUN} blocks, and then
+     * returns null. Otherwise it returns the mob to fight: one still in reach
+     * after {@link #KEEP_UP_TICKS} of running, or the most urgent one when
+     * there is no way to run. Worker thread.
      */
-    private void escape(Odds odds) {
-        escapes++;
-        body.helper().say("Too much for me here (" + odds.names() + "), so I'll "
-            + (odds.pillar() ? "get up out of reach." : "back off."));
-        if (odds.pillar() && pillarUp()) {
-            holdHigh();
-            return;
+    private UUID getaway(Odds odds) {
+        if (!odds.wins()) {
+            escapes++;
         }
+        odds.foes().forEach(foe -> shaken.merge(foe, 1, Integer::sum));
+        body.helper().say("Getting away from " + odds.names() + ".");
         Pos feet = mover.feet();
         Vector away = odds.away().lengthSquared() < 1e-6 ? new Vector(1, 0, 0) : odds.away().normalize();
         int dirX = (int) Math.round(away.getX());
@@ -209,14 +242,47 @@ public final class Fighter {
         if (dirX == 0 && dirZ == 0) {
             dirX = 1;
         }
+        int started = body.main().call(Bukkit::getCurrentTick);
+        running = true;
         try {
-            mover.walk(Goal.away(feet, dirX, dirZ, RUN), () -> {
-                if (body.main().call(this::clear)) {
-                    throw new Close();
+            boolean ran = mover.walk(Goal.away(feet, dirX, dirZ, RUN), () -> {
+                Ended ended = body.main().call(() -> ended(started));
+                if (ended != null) {
+                    throw ended;
                 }
             });
-        } catch (Close clear) {
-            // Far enough from all of them.
+            return ran ? null : odds.first();
+        } catch (Ended ended) {
+            return ended.foe;
+        } finally {
+            running = false;
+        }
+    }
+
+    /** How a getaway that began on tick {@code started} is over, or null while it goes on. Main thread. */
+    private Ended ended(int started) {
+        Player self = body.helper().player();
+        if (self == null || clear()) {
+            return new Ended(null);
+        }
+        if (Bukkit.getCurrentTick() - started < KEEP_UP_TICKS) {
+            return null;
+        }
+        return self.getNearbyEntities(REACH + 1, REACH + 1, REACH + 1).stream()
+            .filter(entity -> entity instanceof LivingEntity foe && !(foe instanceof Creeper) && !foe.isDead()
+                && huntingMe(self, foe) && reach(self, foe) <= REACH)
+            .findFirst()
+            .map(foe -> new Ended(foe.getUniqueId()))
+            .orElse(null);
+    }
+
+    /** Ends a getaway: clear of every pursuer when {@code foe} is null, otherwise caught by that mob. */
+    private static final class Ended extends RuntimeException {
+        private final UUID foe;
+
+        Ended(UUID foe) {
+            super(null, null, false, false);
+            this.foe = foe;
         }
     }
 

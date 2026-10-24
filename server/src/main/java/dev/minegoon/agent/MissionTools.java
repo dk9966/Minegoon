@@ -183,7 +183,9 @@ public final class MissionTools {
     }
 
     private Tool<Mission> fight() {
-        return Tool.of("fight", "Fights the nearest creature of a kind in sight until one of them is dead.", """
+        return Tool.of("fight", """
+            Fights the nearest creature of a kind in sight until one of them is dead. Only when the player asked \
+            for it or a hunt needs it: on its own the helper runs from monsters, which keeps it alive.""", """
             {"type": "object", "properties": {
               "creature": {"type": "string", "description": "An entity id, such as zombie or cow"}
             }, "required": ["creature"]}""", (args, mission) -> {

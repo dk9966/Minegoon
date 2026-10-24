@@ -468,3 +468,13 @@ October 24, 2026. Watching a diamond run with the chase camera, the helper walke
 - **Only roaming skipped shores.** Cliffs, cave openings and peaks on a shore are now skipped too. A search that roams a waterside biome (water, sand, clay, sugar cane, gravel) no longer skips shores or leans away from water. Before, roaming for water skipped every river patch, since a river patch is water.
 
 Not run on the seed yet. The next armor try should show whether the iron and diamond searches reach a deep way down sooner.
+
+### Running from mobs instead of fighting them
+
+October 24, 2026. The helper still died to mobs far too often, and every death in the armor tries came from a fight it chose: a zombie killed it mid-fight, creepers killed it while it backed off a group. A fight spends health the trip needs and wins nothing, since mob drops are not on any plan. So `Fighter.defend` now runs first:
+
+- **Run.** Anything after the helper is run from: it sprints away from the group, steering clear of creepers, until nothing is after it within 14 blocks or it has gone 24. It neither eats nor swings on the way, since both slow the sprint. A sprinting player outpaces zombies, skeletons, creepers, spiders and most other mobs.
+- **Fight only what keeps up.** A mob still in reach after two seconds of running (a baby zombie, an angry enderman, a phantom) is fought, and so is the most urgent one when there is no way to run. If that group is too much and is all melee mobs that cannot climb, it pillars up instead, as before.
+- **Fight what keeps coming back.** A group it has run from twice already, and would beat, is fought. Without this one zombie between the helper and the work would make it run forever, like the creeper it backed off 33 times in try 19.
+
+The planner prompt and the `fight` tool now say the helper runs from monsters, so plans route around them instead of sending it to kill them. Not run on the seed yet (no Docker on the agent machine).
