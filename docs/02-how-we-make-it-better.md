@@ -79,6 +79,7 @@ One mission goes like this:
 - **Reflexes run without the model:** eat when hungry, fight or flee from hostile mobs, escape fire and lava, surface for air, recover footing. (Mine AI MCP and mc-agents both found this essential.)
 - **Protected zones (new).** Mine AI MCP's own limitations doc says the bot will dig through your walls when pathing. We register every blueprint area and every base as a protected zone in the notebook, and the pathfinder treats blocks inside those zones as unbreakable. Mineflayer's pathfinder already supports a "can't break these" list, so this is a small change with a big payoff.
 - **Survival-only by design.** The bot is never given operator rights on the real server. It *can't* use `/give`, `/setblock`, or `/tp`, so it can't cheat even by accident. This is enforced by the server, not by a promise in a prompt.
+- **Fair sight (new).** The bot receives every block within about 160 blocks, buried ores included, which is x-ray. Paper's anti-xray hides buried ores and chests on the server, and the bot only picks destinations it has a clear line of sight to. A `seek(want)` action runs the look, pick, and move loop in code. Details are in `05-perception-and-exploration.md`.
 
 ---
 
@@ -131,7 +132,8 @@ One mission goes like this:
 **Why:** Mine AI MCP's database is what let it remember a stronghold 1,700 blocks away and a nether portal through a death. Agents without one rediscover the world over and over.
 
 **What we do:**
-- Start from Mine AI MCP's schema and add tables for structures, protected zones, mansion room maps, and build progress.
+- Start from Mine AI MCP's schema and add tables for structures, protected zones, mansion room maps, build progress, and sightings (what the bot has actually seen, and from where).
+- A chunk counts as explored when it has been seen, not just loaded, so the frontier reflects what a player would know.
 - Briefings are built by querying the notebook for what's relevant to the current job, never by dumping all of it.
 
 ---
@@ -281,3 +283,4 @@ Each phase has an exit test. Update the status and notes as phases finish, so th
 - Next work is M0 in that doc: back up Apex, switch the jar to Paper 26.3, and confirm both of you can join. Do not start a Mineflayer port.
 - Some of Mine AI MCP's development tools (Mine Labs) need private GitHub access. Plan to build our own lab scenarios instead of relying on theirs.
 - The testing method (same seeds, one setting at a time, harness-judged finish lines, read the first mistake in the logs) is recorded in `04-testing-dialogue.md`. Use it when Phase 3's lab starts.
+- Perception and exploration design (fair sight, sightings map, the scout and its switching rules) is in `05-perception-and-exploration.md`. In Phase 2, measure how fast sight checks run on the 26.3 server before tuning batch sizes. In Phase 3, run "find iron" with fair sight on and off on the same seeds to see what fairness costs.
