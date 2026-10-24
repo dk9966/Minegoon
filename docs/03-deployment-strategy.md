@@ -72,7 +72,7 @@ flowchart LR
       paper[Paper 26.3 server, offline mode, ViaVersion and ViaBackwards]
     end
     body[Body: Mineflayer bot, speaks 26.1]
-    brain[Brain: job board, planner, foreman]
+    brain[Brain: listener, job board, planner, foreman]
     dash[Dashboard client in the browser]
   end
   llm[Model APIs]
@@ -92,7 +92,7 @@ minegent/
   infra/             Minecraft server Docker setup (real world and lab world)
   packages/
     body/            Mineflayer bot, reflexes, actions, MCP endpoint
-    brain/           job board, planner, foreman, inspector
+    brain/           listener, job board, planner, foreman, inspector
     notebook/        SQLite schema and queries shared by body and brain
     blueprint/       design shapes, compiler, bill of materials
     client/          web dashboard
