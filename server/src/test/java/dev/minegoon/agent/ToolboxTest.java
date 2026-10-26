@@ -28,7 +28,7 @@ class ToolboxTest {
     private static final List<Tool<Mission>> MISSION = new MissionTools(null, null, null, null, null,
         new Senses(null, null, null, null, null), null, Set.of("plains")::contains).all();
     private static final List<Tool<Speaker>> DESK = new DeskTools(null, null, null,
-        new Senses(null, null, null, null, null)).all();
+        new Senses(null, null, null, null, null), null).all();
 
     @Test
     void everySchemaIsAnObjectSchemaWhoseRequiredFieldsExist() {

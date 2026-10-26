@@ -18,7 +18,7 @@ public final class Commands {
     private static final int DEFAULT_RADIUS = 16;
     private static final int MAX_RADIUS = 128;
     public static final int MAX_COUNT = 64 * 9;
-    private static final String HELP = "Say get 5 diamond, come, give, status, plan, inventory, stop, pause, "
+    private static final String HELP = "Say get 5 diamond, come, give, status, plan, inventory, effects, stop, pause, "
         + "resume, protect 20, allow 10, watch, chase, free, or back.";
 
     /** Who asked, and where they were standing. Console requests have no id. */
@@ -30,13 +30,15 @@ public final class Commands {
     private final Zones zones;
     private final Watch watch;
     private final Peek peek;
+    private final Effects effects;
 
-    public Commands(Helper helper, Foreman foreman, Zones zones, Watch watch, Peek peek) {
+    public Commands(Helper helper, Foreman foreman, Zones zones, Watch watch, Peek peek, Effects effects) {
         this.helper = helper;
         this.foreman = foreman;
         this.zones = zones;
         this.watch = watch;
         this.peek = peek;
+        this.effects = effects;
     }
 
     /** A plain sentence such as "get me 5 diamonds", with no ! and no model. */
@@ -68,6 +70,7 @@ public final class Commands {
             case "status" -> foreman.status().forEach(helper::say);
             case "plan" -> foreman.plan().forEach(helper::say);
             case "inventory" -> peek.open(speaker.id());
+            case "effects" -> helper.say(effects.report());
             case "stop" -> foreman.stop();
             case "pause" -> foreman.pause();
             case "resume" -> foreman.resume();

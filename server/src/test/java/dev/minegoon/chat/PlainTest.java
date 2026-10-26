@@ -51,6 +51,9 @@ class PlainTest {
         assertEquals(order("give", 0, ""), Plain.read("give it to me", "Builder", false));
         assertEquals(order("status", 0, ""), Plain.read("status?", "Builder", false));
         assertEquals(order("inventory", 0, ""), Plain.read("inv", "Builder", false));
+        assertEquals(order("effects", 0, ""), Plain.read("!effects", "Builder", true));
+        assertEquals(order("effects", 0, ""), Plain.read("effects", "Builder", false));
+        assertEquals(order("effects", 0, ""), Plain.read("effect", "Builder", false));
         assertEquals(order("protect", 20, ""), Plain.read("protect 20 blocks", "Builder", false));
         assertEquals(order("protect", 0, ""), Plain.read("protect this area", "Builder", false));
         assertEquals(order("allow", 10, ""), Plain.read("allow 10", "Builder", false));
