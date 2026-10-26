@@ -14,6 +14,7 @@ import dev.minegoon.actions.Pickup;
 import dev.minegoon.actions.Placer;
 import dev.minegoon.chat.AdminCommand;
 import dev.minegoon.chat.Commands;
+import dev.minegoon.chat.Effects;
 import dev.minegoon.chat.Peek;
 import dev.minegoon.chat.Watch;
 import dev.minegoon.jobs.Foreman;
@@ -415,9 +416,11 @@ public final class Session {
 
         watch = new Watch(plugin, helper);
         peek = new Peek(plugin, helper);
-        commands = new Commands(helper, foreman, zones, watch, peek);
+        Effects effects = new Effects(main, helper);
+        commands = new Commands(helper, foreman, zones, watch, peek, effects);
         desk = new FrontDesk(shared.router(), settings.agent().deskModel(),
-            new DeskTools(commands, foreman, missions, senses).all(), missions, foreman, results, fires, helper::say,
+            new DeskTools(commands, foreman, missions, senses, effects).all(), missions, foreman, results, fires,
+            helper::say,
             log, helperName);
         listen(helper);
         listen(watch);

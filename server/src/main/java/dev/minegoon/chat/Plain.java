@@ -120,9 +120,10 @@ final class Plain {
     private static String canonical(String word) {
         return switch (word) {
             case "get", "grab", "fetch", "bring" -> "get";
-            case "come", "give", "status", "inventory", "stop", "pause", "resume", "protect", "allow", "watch",
-                "chase", "free", "back", "help", "plan" -> word;
+            case "come", "give", "status", "inventory", "effects", "stop", "pause", "resume", "protect", "allow",
+                "watch", "chase", "free", "back", "help", "plan" -> word;
             case "inv" -> "inventory";
+            case "effect" -> "effects";
             default -> null;
         };
     }

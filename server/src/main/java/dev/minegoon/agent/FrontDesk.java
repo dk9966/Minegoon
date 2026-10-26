@@ -30,7 +30,7 @@ public final class FrontDesk {
     private static final String SYSTEM = """
         You read Minecraft chat aimed at %s, a helper player in Minecraft Java 26.3 survival, and pick one tool.
         Questions and greetings: answer, from what the briefing says. What it is carrying: inventory. What is
-        around: look_around. How the work is going: status.
+        around: look_around. How the work is going: status. What is affecting it, such as poison or regeneration: effects.
         A request for some of one item and nothing more: get ("a few" is 3, "some" is 8, "a stack" is 64).
         Anything else the helper must do, such as several items, a way or place to search, strip mining, or
         coming back after: start_mission, with the request restated in full.

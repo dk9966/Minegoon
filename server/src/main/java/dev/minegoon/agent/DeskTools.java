@@ -3,6 +3,7 @@ package dev.minegoon.agent;
 import dev.minegoon.actions.Receipt;
 import dev.minegoon.chat.Commands;
 import dev.minegoon.chat.Commands.Speaker;
+import dev.minegoon.chat.Effects;
 import dev.minegoon.jobs.Foreman;
 import dev.minegoon.jobs.Mission;
 import dev.minegoon.jobs.MissionBoard;
@@ -24,16 +25,18 @@ public final class DeskTools {
     private final Foreman foreman;
     private final MissionBoard missions;
     private final Senses senses;
+    private final Effects effects;
 
-    public DeskTools(Commands commands, Foreman foreman, MissionBoard missions, Senses senses) {
+    public DeskTools(Commands commands, Foreman foreman, MissionBoard missions, Senses senses, Effects effects) {
         this.commands = commands;
         this.foreman = foreman;
         this.missions = missions;
         this.senses = senses;
+        this.effects = effects;
     }
 
     public List<Tool<Speaker>> all() {
-        return List.of(answer(), status(), senses.inventoryTool(), senses.lookAroundTool(), command(), get(),
+        return List.of(answer(), status(), effects(), senses.inventoryTool(), senses.lookAroundTool(), command(), get(),
             startMission(), amendMission());
     }
 
@@ -47,6 +50,12 @@ public final class DeskTools {
     private Tool<Speaker> status() {
         return Tool.of("status", "Says what the helper is working on and how far it has got.",
             (args, speaker) -> Receipt.confirmed("status", String.join(" ", foreman.status())));
+    }
+
+    private Tool<Speaker> effects() {
+        return Tool.of("effects",
+            "Says the potion effects on the helper right now, such as poison or regeneration, and how long each has left.",
+            (args, speaker) -> Receipt.confirmed("effects", effects.report()));
     }
 
     private Tool<Speaker> command() {

@@ -6,7 +6,7 @@ description: A survival helper you talk to in chat.
 commands:
   minegoon:
     description: Admin controls for the helper (console or operators).
-    usage: /minegoon <get|status|inventory|stop|pause|resume|come|give|protect|allow|watch|back|plan|results|reset>
+    usage: /minegoon <get|status|inventory|effects|stop|pause|resume|come|give|protect|allow|watch|back|plan|results|reset>
     permission: minegoon.admin
 permissions:
   minegoon.admin:
