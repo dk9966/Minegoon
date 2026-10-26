@@ -17,18 +17,20 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * Reads one sentence aimed at the helper, such as "Builder, what are you
+ * Reads one sentence a player sent with a leading !, such as "what are you
  * carrying?", with one cheap model turn: answers it, acts on it at once, or
- * starts or changes a mission. A sentence during a mission is briefed with the
- * mission's plan and its latest lines. A ! line and the plain brakes (stop,
- * pause, resume, come) never come here.
+ * starts or changes a mission. The ! is already removed. A sentence during a
+ * mission is briefed with the mission's plan and its latest lines. A line that
+ * is already one command never comes here.
  */
 public final class FrontDesk {
 
     private static final int RECENT_LINES = 3;
 
     private static final String SYSTEM = """
-        You read Minecraft chat aimed at %s, a helper player in Minecraft Java 26.3 survival, and pick one tool.
+        You read one sentence a player sent to %s, a helper in Minecraft Java 26.3 survival, and pick one tool.
+        The player addressed the helper by starting the chat line with !. That mark is already removed, and the
+        player does not say the helper's name.
         Questions and greetings: answer, from what the briefing says. What it is carrying: inventory. What is
         around: look_around. How the work is going: status.
         A request for some of one item and nothing more: get ("a few" is 3, "some" is 8, "a stack" is 64).
@@ -78,7 +80,7 @@ public final class FrontDesk {
                 toolbox.specs());
         } catch (IOException e) {
             log.warning("Could not read chat with the model: " + e.getMessage());
-            String said = "Sorry, I didn't catch that. Try get 5 diamond.";
+            String said = "Sorry, I didn't catch that. Say !help.";
             say.accept(said);
             results.desk(new Results.Desk(null, "{}", false, said, 0));
             return;

@@ -77,13 +77,13 @@ public final class Watch implements Listener {
     }
 
     public void start(UUID id) {
-        sit(id, View.EYES, "You're watching through my eyes. Say chase to see me from behind, sneak or say free to "
-            + "stop and look around there, or say back to return.");
+        sit(id, View.EYES, "You're watching through my eyes. Say !chase to see me from behind, sneak or say !free to "
+            + "stop and look around there, or say !back to return.");
     }
 
     public void chase(UUID id) {
-        sit(id, View.CHASE, "You're following me from behind. Sneak or say free to stop and look around there, "
-            + "or say back to return.");
+        sit(id, View.CHASE, "You're following me from behind. Sneak or say !free to stop and look around there, "
+            + "or say !back to return.");
     }
 
     private void sit(UUID id, View view, String message) {
@@ -116,7 +116,7 @@ public final class Watch implements Listener {
             }
             Seat seat = seats.get(player.getUniqueId());
             if (seat == null || seat.view == View.FREE) {
-                tell(player, "You're not following me. Say chase or watch to follow me.");
+                tell(player, "You're not following me. Say !chase or !watch to follow me.");
                 return;
             }
             letGo(player, seat);
@@ -140,8 +140,8 @@ public final class Watch implements Listener {
         unrig(seat);
         seat.view = View.FREE;
         player.teleport(here);
-        tell(player, "You're free to fly around here. Say chase or watch to follow me again, "
-            + "or back to go back to where you started.");
+        tell(player, "You're free to fly around here. Say !chase or !watch to follow me again, "
+            + "or !back to go back to where you started.");
     }
 
     public void stop(UUID id) {
@@ -299,7 +299,7 @@ public final class Watch implements Listener {
         Seat seat = seats.remove(player.getUniqueId());
         if (seat == null) {
             if (tell) {
-                tell(player, "You're not watching. Say watch to see through my eyes, or chase to follow me.");
+                tell(player, "You're not watching. Say !watch to see through my eyes, or !chase to follow me.");
             }
             return;
         }

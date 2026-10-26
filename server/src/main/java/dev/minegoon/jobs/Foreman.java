@@ -290,7 +290,7 @@ public final class Foreman {
 
     public synchronized void pause() {
         if (pauseActive("paused by a player")) {
-            say("Paused. Say resume when you want me to carry on.");
+            say("Paused. Say !resume when you want me to carry on.");
         } else {
             say("I'm not working on anything.");
         }
@@ -1036,7 +1036,7 @@ public final class Foreman {
         say("Coming back, " + reason + ".");
         crew.homecoming().goBack(task.owner(), task.home());
         int have = inspector.have(task.goalItems());
-        say("I'm back with " + have + " of " + task.describe() + ". Say resume to send me out again, or give.");
+        say("I'm back with " + have + " of " + task.describe() + ". Say !resume to send me out again, or !give.");
     }
 
     private void finish(long taskId, Task.Status status, String reason) {
