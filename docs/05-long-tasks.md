@@ -340,7 +340,7 @@ Still open: a flooded space with no air within 12 blocks and a roof that cannot 
 
 Written October 20, 2026. No pass has been run yet. Record each pass here like the ones above.
 
-The other suites type a command. This one says a sentence to the helper by name, through `/minegoon ask`, so a model reads it (see "Phase: the agent loop" in `04-mvp-plan.md`). It checks two things: that the helper does what the sentence asked, and that the typed commands for the same work still run as before.
+The other suites type a command. This one says a sentence to the helper through `/minegoon ask`, the same words you would type after `!` in chat, so a model reads it (see "Phase: the agent loop" in `04-mvp-plan.md`). It checks two things: that the helper does what the sentence asked, and that the typed commands for the same work still run as before. The helper's name is not part of the sentence.
 
 ```
 scripts/long-tasks.sh 1 agent                       # every agent task

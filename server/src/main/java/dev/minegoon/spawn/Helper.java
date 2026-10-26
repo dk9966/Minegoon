@@ -42,7 +42,7 @@ public final class Helper implements Listener {
     public void spawn() {
         player = FakePlayer.spawn(name, spawnPoint());
         player.setSleepingIgnored(true);
-        say("Hi, I'm here. Say get 5 diamond, or help.");
+        say("Hi, I'm here. Say !help.");
     }
 
     /** Practice runs only: back to spawn with an empty inventory, full health, and no loose items around. */

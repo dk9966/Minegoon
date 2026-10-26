@@ -5,7 +5,6 @@ import dev.minegoon.Session;
 import dev.minegoon.agent.FrontDesk;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import java.util.List;
-import java.util.regex.Pattern;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -13,12 +12,12 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
 /**
- * Reads chat. A sentence for the helper, such as "get me 5 diamonds" or one
- * that names it, goes to its front desk: a model reads it and picks the code
- * to run. Three kinds skip the model: a ! line, which runs that command as
- * typed; a plain stop, pause, resume or come, which must act at once; and,
- * with no key, any plain command. One helper hears every player. Several
- * helpers each hear the world they are standing in.
+ * Reads chat. A line for the helper starts with !. One command, such as
+ * "!get 5 diamond" or "!come here", runs as code. Anything else after the !,
+ * such as "!what are you carrying?" or "!I need a bucket and some torches",
+ * goes to the front desk when a key is set. Chat with no ! is left alone,
+ * and saying the helper's name does not address it. One helper hears every
+ * player. Several helpers each hear the world they are standing in.
  */
 public final class ChatListener implements Listener {
 
@@ -41,12 +40,23 @@ public final class ChatListener implements Listener {
             return;
         }
         String text = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+        if (!text.startsWith("!")) {
+            return;
+        }
         Commands commands = session.commands();
         FrontDesk desk = session.desk();
-        if (text.startsWith("!") || commands.controls(text) || (!desk.enabled() && commands.understands(text))) {
-            Thread.ofVirtual().start(() -> commands.handle(speaker(player), text));
-        } else if (desk.enabled() && (commands.understands(text) || mentions(session, text))) {
-            Thread.ofVirtual().start(() -> desk.hear(speaker(player), text));
+        Thread.ofVirtual().start(() -> hear(player, text, commands, desk));
+    }
+
+    private void hear(Player player, String text, Commands commands, FrontDesk desk) {
+        Commands.Speaker speaker = speaker(player);
+        String sentence = text.substring(1).trim();
+        if (sentence.isEmpty() || commands.understands(text)) {
+            commands.handle(speaker, sentence.isEmpty() ? "!help" : text);
+        } else if (desk.enabled()) {
+            desk.hear(speaker, sentence);
+        } else {
+            commands.missed();
         }
     }
 
@@ -60,11 +70,6 @@ public final class ChatListener implements Listener {
             .filter(session -> session.helper().player().getWorld().equals(player.getWorld()))
             .findFirst()
             .orElse(null);
-    }
-
-    private boolean mentions(Session session, String text) {
-        Pattern mention = Pattern.compile("\\b" + Pattern.quote(session.helper().name()) + "\\b", Pattern.CASE_INSENSITIVE);
-        return mention.matcher(text).find();
     }
 
     private Commands.Speaker speaker(Player player) {

@@ -59,8 +59,9 @@ class Task:
     """Get `count` of `item`, or with `spar` set, fight that many of that monster.
     `kit` is handed over after the reset, as item:count. An `impossible` task
     passes when the helper stops it with a reason instead of trying forever.
-    With `said` set, the request is said to the helper by name instead, and
-    `check` reads the trip's record: it names what went wrong, or is empty."""
+    With `said` set, the request is said as a sentence (the words after ! in
+    chat) instead, and `check` reads the trip's record: it names what went
+    wrong, or is empty."""
     id: str
     count: int
     item: str
@@ -906,7 +907,7 @@ def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Pat
     elif task.spar:
         command = ["spar", task.spar, str(task.count)]
     elif task.said:
-        command = ["ask", f"{lane.helper}, {task.said}"]
+        command = ["ask", task.said]
     else:
         command = ["get", str(task.count), task.item]
     launch = rcon(CONTAINER, "minegoon", "lane", lane.name, *command)
@@ -931,7 +932,7 @@ def run_one(lane: Lane, task: Task, repeat: int, spot: tuple[int, int], out: Pat
             rcon(CONTAINER, "minegoon", "lane", lane.name, "stop")
             time.sleep(2)
             break
-        if any("Say resume" in line for line in new_chat(lane.data, offset, lane.helper)):
+        if any("Say !resume" in line for line in new_chat(lane.data, offset, lane.helper)):
             outcome = "paused"
             break
         if now >= next_sample:

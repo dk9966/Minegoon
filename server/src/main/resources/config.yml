@@ -2,14 +2,18 @@ helper:
   name: Builder
 
 openrouter:
-  # Paste the key here on the server only. "get 5 diamond" and the other
-  # commands work with or without a key. With a key, a sentence that names the
-  # helper goes to the desk model, which answers it, acts on it at once, or
-  # starts a mission: the planner model writes a plan, then the helper works
-  # through it one tool at a time, with the desk model taking the turns that
-  # go to plan. When a search keeps coming up empty the advice model is asked
-  # once where to look; good advice is kept in lessons.json. Without a key,
-  # the helper searches with what it knows.
+  # Paste the key here on the server only. Talk to the helper by starting a
+  # chat line with !. "!get 5 diamond" and the other commands work with or
+  # without a key. Chat that does not start with ! is left alone, and saying
+  # the helper's name does not address it. With a key, a ! line that is not
+  # one command (for example "!what are you carrying?" or "!I need a bucket
+  # and some torches") goes to the desk model, which answers it, acts on it
+  # at once, or starts a mission: the planner model writes a plan, then the
+  # helper works through it one tool at a time, with the desk model taking
+  # the turns that go to plan. When a search keeps coming up empty the advice
+  # model is asked once where to look; good advice is kept in lessons.json.
+  # Without a key, a ! sentence that is not a command gets a pointer to
+  # !help, and the helper searches with what it knows.
   api-key: ""
   # Any server that answers OpenRouter's chat completions API.
   url: https://openrouter.ai/api/v1/chat/completions

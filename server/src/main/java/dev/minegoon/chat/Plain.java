@@ -7,9 +7,13 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Turns a chat line into one command. "get me a few diamonds" and "!get 5 diamond"
- * are the same get. A ! line may carry extra words. A plain sentence has to be
- * just the command, so the rest of chat is left alone.
+ * Turns a chat line into one command. "!get me a few diamonds" and "!get 5 diamond"
+ * are the same get. Chat is what requires the leading !. This reader also accepts
+ * the words without it, which is how the console passes a command through.
+ *
+ * <p>Read strictly, extra words are ignored. Chat only treats a line as a command
+ * when it reads without that, so "!come look at this" and "!get logs and stone"
+ * stay sentences. The helper's name is not an address.
  *
  * <p>Counts match the ones the model is told, so a sentence means the same thing
  * either way: "a few" is 3, "some" is 8, "a stack" is 64.
@@ -37,16 +41,22 @@ final class Plain {
     /** Any of these after watch asks for the view from behind: "watch in third person", "watch me from behind". */
     private static final Set<String> THIRD_PERSON = Set.of("third", "3rd", "behind", "chase");
 
-    /** Words that look like a get but are not an item, so plain chat is not stolen. */
+    /** The small words that fill out "watch in third person" and "watch me from behind". */
+    private static final Set<String> VIEW = Set.of("in", "person", "from", "view", "mode");
+
+    /** Words that look like a get but are not an item, so a sentence is not stolen. */
     private static final Set<String> NOT_ITEM = Set.of("it", "that", "this", "them", "something", "stuff", "things");
+
+    /** A get that says one of these is more than one item, so it stays a sentence. */
+    private static final Set<String> MORE = Set.of("and", "then", "also", "plus", "but", "after");
 
     private Plain() {
     }
 
-    /** strict is for a ! line: extra words are ignored instead of rejecting the line. */
-    static Optional<Order> read(String line, String helperName, boolean strict) {
+    /** strict ignores extra words. Chat uses the other way, so a sentence is not taken as a command. */
+    static Optional<Order> read(String line, boolean strict) {
         List<String> words = words(line);
-        int at = skipLeading(words, helperName);
+        int at = skipLeading(words);
         if (at >= words.size()) {
             return Optional.empty();
         }
@@ -56,7 +66,11 @@ final class Plain {
         }
         List<String> rest = words.subList(at + 1, words.size());
         if (verb.equals("watch") && rest.stream().anyMatch(THIRD_PERSON::contains)) {
-            return Optional.of(new Order("chase", 0, ""));
+            if (strict || rest.stream().allMatch(word ->
+                THIRD_PERSON.contains(word) || TAIL.contains(word) || VIEW.contains(word))) {
+                return Optional.of(new Order("chase", 0, ""));
+            }
+            return Optional.empty();
         }
         return switch (verb) {
             case "get" -> readGet(rest, strict);
@@ -65,8 +79,8 @@ final class Plain {
         };
     }
 
-    static boolean isControl(String line, String helperName) {
-        return read(line, helperName, false).map(order -> CONTROLS.contains(order.verb())).orElse(false);
+    static boolean isControl(String line) {
+        return read(line, false).map(order -> CONTROLS.contains(order.verb())).orElse(false);
     }
 
     private static Optional<Order> readGet(List<String> rest, boolean strict) {
@@ -91,7 +105,7 @@ final class Plain {
             end--;
         }
         List<String> item = words.subList(start, end);
-        if (!strict && item.stream().anyMatch(NOT_ITEM::contains)) {
+        if (!strict && item.stream().anyMatch(word -> NOT_ITEM.contains(word) || MORE.contains(word))) {
             return Optional.empty();
         }
         return Optional.of(new Order("get", count, String.join(" ", item)));
@@ -159,37 +173,12 @@ final class Plain {
         };
     }
 
-    private static int skipLeading(List<String> words, String helperName) {
-        List<String> name = new ArrayList<>();
-        for (String part : helperName.toLowerCase(Locale.ROOT).split("\\s+")) {
-            String clean = part.replaceAll("^[^a-z0-9]+|[^a-z0-9]+$", "");
-            if (!clean.isEmpty()) {
-                name.add(clean);
-            }
-        }
+    private static int skipLeading(List<String> words) {
         int i = 0;
-        while (i < words.size()) {
-            if (!name.isEmpty() && matches(words, i, name)) {
-                i += name.size();
-            } else if (LEADING.contains(words.get(i))) {
-                i++;
-            } else {
-                break;
-            }
+        while (i < words.size() && LEADING.contains(words.get(i))) {
+            i++;
         }
         return i;
-    }
-
-    private static boolean matches(List<String> words, int at, List<String> phrase) {
-        if (at + phrase.size() > words.size()) {
-            return false;
-        }
-        for (int i = 0; i < phrase.size(); i++) {
-            if (!words.get(at + i).equals(phrase.get(i))) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static List<String> words(String line) {
