@@ -511,8 +511,12 @@ public final class Vision {
         return seen;
     }
 
-    /** One column of the land far off: the top of it, its biome, and whether that top is water. */
-    public record Column(Pos at, String biome, boolean water) {
+    /**
+     * One column of the land far off: the top of it, its biome, whether that top
+     * is water, and whether it is bare rock. Rock on the surface is where a cave
+     * or a ravine has cut through.
+     */
+    public record Column(Pos at, String biome, boolean water, boolean rock) {
     }
 
     /**
@@ -540,9 +544,10 @@ public final class Vision {
                     int top = world.getHighestBlockYAt(x, z, org.bukkit.HeightMap.MOTION_BLOCKING_NO_LEAVES);
                     Material type = world.getType(x, top, z);
                     Biome biome = world.getBiome(x, top, z);
-                    columns.add(new Column(new Pos(x, top + 1, z), biome.getKey().getKey(),
-                        type == Material.WATER || type == Material.ICE || type == Material.SEAGRASS
-                            || type == Material.KELP || type == Material.KELP_PLANT));
+                    boolean water = type == Material.WATER || type == Material.ICE || type == Material.SEAGRASS
+                        || type == Material.KELP || type == Material.KELP_PLANT;
+                    columns.add(new Column(new Pos(x, top + 1, z), biome.getKey().getKey(), water,
+                        !water && exposedRock(type)));
                 }
             }
             return columns;
@@ -596,6 +601,16 @@ public final class Vision {
 
     private Sight.Eye eye() {
         return main.call(() -> Sight.Eye.of(player.get().getEyeLocation()));
+    }
+
+    /**
+     * Stone left open to the sky. Cave noise and ravines break out through it.
+     * Grass and dirt do not, and a badlands mesa is clay rather than a mouth.
+     */
+    private static boolean exposedRock(Material type) {
+        return Tag.BASE_STONE_OVERWORLD.isTagged(type) || type == Material.CALCITE
+            || type == Material.DRIPSTONE_BLOCK || type == Material.POINTED_DRIPSTONE
+            || type == Material.GRAVEL || type == Material.COBBLED_DEEPSLATE;
     }
 
     private static final Set<Material> ROCK = rockTypes();

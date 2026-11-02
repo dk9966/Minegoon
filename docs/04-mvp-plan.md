@@ -320,6 +320,12 @@ Changed from the plan while building:
 
 Next for this phase: the first agent lab pass. After that, new abilities come in as new tools: opening chests, placing a block at a spot, following a player. Each one is added only after it passes its own lab test. The loop itself does not change.
 
+Done November 2, 2026: hunting and cave search.
+
+- **Hunting holds a tool.** A meal or a hunt equips the carried tool that kills a cow soonest (damage and attack speed, Sharpness included). A netherite axe one-shots and beats a faster sword that needs two hits. A copper sword counts; it was missing, so the helper punched while one sat in the inventory. With no sword or axe it uses the best pickaxe or shovel. A fight still prefers damage per second, and a reflex swing draws a weapon before it hits. Code: `trips/Arms.java`, used by `Gatherer`, `Fighter`, and `Reflexes`.
+- **Caves are a shape, not only a hole.** When no mouth or ravine floor is in sight, the cave move walks to the dry notch or bare-rock slope that looks most like where a noise cave breaks the surface. The walk to new ground for a deep search pulls toward that same shape, on top of mountains and away from water. Written in `knowledge.yml` and `trips/Prospector.java`.
+- **Sight is 16 chunks.** The fake player used to join with the vanilla default of 2, so the horizon past 32 blocks was never loaded. It now asks for 16, and raises the world's send distance when that is lower. The lab server's view distance matches. Simulation distance stays 8.
+
 Next:
 
 - The first agent lab pass (`scripts/long-tasks.sh 1 agent`), with the OpenRouter key in the lab config.
@@ -355,7 +361,7 @@ Code knows:
 - Where raw items come from: ores, logs, grass (wheat seeds), ripe crops, cows and the other passive animals, skeletons (bones, arrows), spiders (string), zombies (a slow way to get carrots and potatoes when no farm is growing).
 - Wheat can be harvested ripe, or grown: hoe dirt, plant seeds, bone meal from bones, harvest. Bread is then the normal recipe.
 - A water or lava bucket is a right-click on a source block, not a recipe.
-- Hungry with nothing to eat: hunt a cow, pig, sheep, or chicken and eat it, then continue the task.
+- Hungry with nothing to eat: hunt a cow, pig, sheep, or chicken with the best tool it is carrying and eat it, then continue the task. The tool is the one that finishes a 10-health animal soonest. A bare hand is never used while a sword, axe, pickaxe, or shovel is in the inventory.
 - The tool for the current step is about to break: craft another of that tool, then continue.
 - Night with no weapon: craft a stone axe. Night on the surface: make a bed if needed, sleep, pick the bed back up.
 - Nothing of this source in range, but another source is known: the model is told that, and it can switch. With no key, the code switches on its own.

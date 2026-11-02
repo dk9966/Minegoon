@@ -38,6 +38,13 @@ import org.bukkit.entity.Player;
  */
 public final class FakePlayer {
 
+    /**
+     * Chunks the helper keeps loaded around itself. Vanilla's default client
+     * asks for 2, which would leave cave mouths past 32 blocks unseen. The
+     * practice and lab servers send at least this many.
+     */
+    public static final int VIEW_CHUNKS = 16;
+
     private FakePlayer() {
     }
 
@@ -46,8 +53,13 @@ public final class FakePlayer {
     public static Player spawn(String name, Location fallback) {
         MinecraftServer server = MinecraftServer.getServer();
         ServerLevel level = ((CraftWorld) fallback.getWorld()).getHandle();
+        org.bukkit.World world = fallback.getWorld();
+        if (world.getSendViewDistance() < VIEW_CHUNKS) {
+            world.setSendViewDistance(VIEW_CHUNKS);
+        }
         GameProfile profile = new GameProfile(offlineUuid(name), name);
-        ServerPlayer player = new ServerPlayer(server, level, profile, ClientInformation.createDefault());
+        ClientInformation seeing = seeing(ClientInformation.createDefault());
+        ServerPlayer player = new ServerPlayer(server, level, profile, seeing);
 
         try (var reporter = new ProblemReporter.ScopedCollector(player.problemPath(), LogUtils.getLogger())) {
             var saved = server.getPlayerList()
@@ -63,8 +75,19 @@ public final class FakePlayer {
                 position.rotation().map(rotation -> rotation.y).orElse(fallback.getPitch()));
         }
 
-        server.getPlayerList().placeNewPlayer(new NoClient(), player, CommonListenerCookie.createInitial(profile, false));
-        return player.getBukkitEntity();
+        CommonListenerCookie joined = CommonListenerCookie.createInitial(profile, false);
+        server.getPlayerList().placeNewPlayer(new NoClient(), player, new CommonListenerCookie(joined.gameProfile(),
+            joined.latency(), seeing, joined.transferred(), joined.clientBrand(), joined.channels(), joined.keepAlive()));
+        Player body = player.getBukkitEntity();
+        body.setSendViewDistance(VIEW_CHUNKS);
+        return body;
+    }
+
+    /** The same defaults a joining client would send, except it can see {@link #VIEW_CHUNKS} chunks. */
+    private static ClientInformation seeing(ClientInformation defaults) {
+        return new ClientInformation(defaults.language(), VIEW_CHUNKS, defaults.chatVisibility(), defaults.chatColors(),
+            defaults.modelCustomisation(), defaults.mainHand(), defaults.textFilteringEnabled(), defaults.allowsListing(),
+            defaults.particleStatus());
     }
 
     /** Saves and removes the player, the same way a real player logs out. */

@@ -75,21 +75,6 @@ public final class Bestiary {
     private static final double LONE_CREEPER = 0.15;
     /** Spiders leave a player alone in light at least this bright. */
     private static final int SPIDER_CALM_LIGHT = 12;
-    /** Damage and attacks per second for each weapon the fighter swings. */
-    private static final Map<Material, double[]> WEAPONS = new EnumMap<>(Map.ofEntries(
-        Map.entry(Material.NETHERITE_SWORD, new double[] {8, 1.6}),
-        Map.entry(Material.DIAMOND_SWORD, new double[] {7, 1.6}),
-        Map.entry(Material.IRON_SWORD, new double[] {6, 1.6}),
-        Map.entry(Material.COPPER_SWORD, new double[] {5, 1.6}),
-        Map.entry(Material.STONE_SWORD, new double[] {5, 1.6}),
-        Map.entry(Material.WOODEN_SWORD, new double[] {4, 1.6}),
-        Map.entry(Material.NETHERITE_AXE, new double[] {10, 1.0}),
-        Map.entry(Material.DIAMOND_AXE, new double[] {9, 1.0}),
-        Map.entry(Material.IRON_AXE, new double[] {9, 0.9}),
-        Map.entry(Material.COPPER_AXE, new double[] {9, 0.8}),
-        Map.entry(Material.STONE_AXE, new double[] {9, 0.8}),
-        Map.entry(Material.WOODEN_AXE, new double[] {7, 0.8})));
-
     static {
         melee(EntityType.ZOMBIE, 20, 3, "fight it; babies are fast, so they go first");
         melee(EntityType.HUSK, 20, 3, "fight it; its hits make you hungry, so eat after");
@@ -220,9 +205,9 @@ public final class Bestiary {
     /** What the helper brings to a fight right now: its best weapon, armor worn, health, and shield. Main thread. */
     public static Strength strength(Player self) {
         double dps = 4;
-        for (Map.Entry<Material, double[]> weapon : WEAPONS.entrySet()) {
-            if (self.getInventory().contains(weapon.getKey())) {
-                dps = Math.max(dps, weapon.getValue()[0] * weapon.getValue()[1]);
+        for (Material weapon : Arms.meleeBestFirst()) {
+            if (self.getInventory().contains(weapon)) {
+                dps = Math.max(dps, Arms.meleeDps(weapon));
             }
         }
         double armor = value(self, Attribute.ARMOR, 0);

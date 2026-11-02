@@ -32,6 +32,7 @@ import dev.minegoon.planner.Planner;
 import dev.minegoon.safety.BreakGuard;
 import dev.minegoon.safety.BreakPolicy;
 import dev.minegoon.safety.Zones;
+import dev.minegoon.spawn.FakePlayer;
 import dev.minegoon.spawn.Helper;
 import dev.minegoon.trips.Bestiary;
 import dev.minegoon.trips.Farmer;
@@ -369,7 +370,7 @@ public final class Session {
         Placer placer = new Placer(body);
         mover = new Mover(body, miner, placer);
         Pickup pickup = new Pickup(body, mover);
-        Vision vision = new Vision(main, helper::player, Bukkit.getViewDistance() * 16);
+        Vision vision = new Vision(main, helper::player, FakePlayer.VIEW_CHUNKS * 16);
         Structures structures = new Structures(vision, knowledge.structures(), folder.resolve("structures.json"), log);
         Tunneler tunneler = new Tunneler(body, mover, vision);
         prospector = new Prospector(knowledge, shared.lessons(), mover, vision, structures, tunneler, helperName, log);

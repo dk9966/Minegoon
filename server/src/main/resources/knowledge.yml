@@ -17,6 +17,12 @@
 # When the list runs out the helper walks toward ground it has not seen yet and
 # starts the list again, so it never runs out of places to look.
 #
+# A cave move does not wait for a perfect mouth. Noise caves and ravines break
+# the surface as a dry notch (ground a short walk below the ground beside it)
+# or as bare stone, deepslate, tuff, calcite, dripstone, or gravel on a slope.
+# From the surface a deep search also heads toward that shape, toward mountains,
+# and away from water. It sees 16 chunks, which is the horizon it judges this by.
+#
 #   y       lowest and highest height it shows up at
 #   best    the height with the most of it
 #   biomes  where it is common, for roam

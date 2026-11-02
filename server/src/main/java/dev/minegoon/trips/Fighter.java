@@ -95,10 +95,8 @@ public final class Fighter {
     private static final double BLAST_CLOSE = 3.5;
     /** Ticks a creeper is backed away from after each hit, so it never gets a swell going in reach. */
     private static final int CREEPER_BACKOFF = 12;
-    private static final List<Material> WEAPONS = List.of(
-        Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.IRON_SWORD, Material.STONE_SWORD,
-        Material.GOLDEN_SWORD, Material.WOODEN_SWORD, Material.NETHERITE_AXE, Material.DIAMOND_AXE,
-        Material.IRON_AXE, Material.STONE_AXE, Material.WOODEN_AXE);
+    /** Swords and axes, best damage per second first, copper included. */
+    private static final List<Material> WEAPONS = Arms.meleeBestFirst();
 
     /** How one fight went, for practice runs to score. */
     public record Tally(String target, boolean won, boolean died, boolean fled, int ticks, int swings, int hits,
@@ -723,14 +721,17 @@ public final class Fighter {
         }
     }
 
-    /** The best sword or axe carried, into the main hand. False when it carries none. Main thread. */
+    /**
+     * The best sword or axe for a fight, into the main hand. With neither, the
+     * best tool for a hunt, so a swing is never a bare hand while a pickaxe is
+     * sitting in the inventory. False when it carries nothing that hits. Main thread.
+     */
     public static boolean wield(Player self) {
-        for (Material weapon : WEAPONS) {
-            if (Hands.hold(self, weapon)) {
-                return true;
-            }
+        if (Arms.carryingMelee(self)) {
+            Arms.holdBestMelee(self);
+            return true;
         }
-        return false;
+        return Arms.holdForHunt(self);
     }
 
     /** The best weapon in hand and a shield in the off hand, if the helper has them. */

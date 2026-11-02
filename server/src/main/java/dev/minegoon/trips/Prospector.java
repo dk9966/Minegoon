@@ -48,6 +48,17 @@ public final class Prospector {
     private static final int PEAK_ABOVE = 10;
     /** How far above the best height a cave is still worth walking through. */
     private static final int CAVERN_ABOVE = 16;
+    /**
+     * How a cave mouth shows up when the opening itself is not in sight. Noise
+     * caves and ravines break the surface as a dry notch, or as bare rock on a
+     * slope. Sampled across the horizon, and again for the walk between looks.
+     */
+    private static final int CUT_STEP = 8;
+    private static final int NOTCH_REACH = 32;
+    private static final int CUT_DROP = 8;
+    private static final int ROCK_DROP = 4;
+    private static final double RELIEF_FULL = 48;
+    private static final double NOTCH_FULL = 16;
     /** How far a structure seen before is worth walking back to. */
     private static final int REMEMBERED_WITHIN = 1024;
     private static final int BURIED = 8;
@@ -190,7 +201,7 @@ public final class Prospector {
 
     private static String means(Way way) {
         return switch (way) {
-            case CAVE -> "down cave mouths and ravine floors in sight";
+            case CAVE -> "down cave mouths, ravines, and ground shaped like one";
             case CAVERN -> "through big caves underground";
             case CLIFF -> "on bare rock faces";
             case PEAK -> "from high ground";
@@ -397,8 +408,10 @@ public final class Prospector {
          * where the thing stops showing up, and not on a shore, where the lowest
          * dry ground is only a river bank or a beach. Big caves reach the surface
          * through ravines and wide mouths, so those come first. Nothing is dug
-         * unless a player asked for digging; with no way down in sight the
-         * search moves on to new ground.
+         * unless a player asked for digging. With no mouth in sight it walks to
+         * the ground whose shape is most like one: a dry notch, or bare rock on
+         * a slope. That is where a cave breaks the surface even when the hole
+         * itself is still over the next ridge.
          */
         private boolean cave(Checkpoint checkpoint) {
             Pos feet = mover.feet();
@@ -428,11 +441,32 @@ public final class Prospector {
             if (walkToFirst(remembered, checkpoint)) {
                 return true;
             }
+            if (walkToFirst(likelyMouths(feet), checkpoint)) {
+                return true;
+            }
             if (find.best() != null && feet.y() > find.best() + 8 && digging()
                 && tunneler.down(Math.max(find.best(), feet.y() - STAIRS), STAIRS, checkpoint)) {
                 return true;
             }
             return walkToFirst(openings, checkpoint);
+        }
+
+        /**
+         * Places to walk to when no cave mouth is actually in sight. Only on the
+         * surface: underground, the cavern move follows the cave the helper is in.
+         * The best few, closest and deepest first, so a ravine across the valley
+         * is not a walk to every dip along the way.
+         */
+        private List<Pos> likelyMouths(Pos feet) {
+            if (surface(feet) - feet.y() > BURIED) {
+                return List.of();
+            }
+            return cuts(vision.horizon(HORIZON, CUT_STEP), feet).stream()
+                .filter(inland())
+                .filter(pos -> pos.y() >= find.low())
+                .sorted(worthTheWalk(feet, pos -> feet.y() - pos.y()))
+                .limit(TARGETS)
+                .toList();
         }
 
         /** High ground, while still on the surface. Climbing back out of a hole does not find more ore. */
@@ -533,9 +567,10 @@ public final class Prospector {
      * Toward the compass direction with the most ground not yet looked at,
      * keeping the last heading when it is as good. On the surface that ground
      * is weighed by the land out to the horizon that way, so the walk heads
-     * inland, and for a {@code deep} search toward mountains, walking twice as
-     * far. Underground that is a walk along the cave; a tunnel only when a
-     * player asked for digging. When no walk gets anywhere, out to the surface,
+     * inland, and for a {@code deep} search toward mountains, bare rock, and
+     * ground that rises and drops like a ravine. Underground that is a walk
+     * along the cave; a tunnel only when a player asked for digging. When no
+     * walk gets anywhere, out to the surface,
      * by stairs only if nothing else works: being shut in is never a reason to
      * stay. Not {@link Dry}: the thing may be out there, the helper just cannot
      * move, and nobody's advice changes that.
@@ -636,6 +671,8 @@ public final class Prospector {
      * judged from the land out to the horizon there: the share of it that is
      * land, with mountain, a mountain biome or ground well above the feet,
      * counting {@link #MOUNTAIN_PULL} times extra for a {@code deep} search.
+     * The same pull applies to bare rock and to ground that rises and falls,
+     * because that is the shape a cave or a ravine cuts into the surface.
      * A {@code waterside} search counts water as land. With nothing in sight
      * that way, a chunk is worth one.
      */
@@ -643,6 +680,15 @@ public final class Prospector {
         int[] all = new int[COMPASS.length];
         int[] high = new int[COMPASS.length];
         int[] wet = new int[COMPASS.length];
+        int[] rock = new int[COMPASS.length];
+        int[] maxY = new int[COMPASS.length];
+        int[] minY = new int[COMPASS.length];
+        for (int i = 0; i < COMPASS.length; i++) {
+            maxY[i] = Integer.MIN_VALUE;
+            minY[i] = Integer.MAX_VALUE;
+        }
+        List<Vision.Column> dry = new ArrayList<>();
+        List<Integer> directionOf = new ArrayList<>();
         for (Vision.Column column : horizon) {
             Pos at = column.at();
             int dx = at.x() - feet.x();
@@ -654,16 +700,81 @@ public final class Prospector {
             all[direction]++;
             if (column.water()) {
                 wet[direction]++;
-            } else if (MOUNTAINS.contains(column.biome()) || at.y() >= feet.y() + MOUNTAIN_ABOVE) {
+                continue;
+            }
+            if (MOUNTAINS.contains(column.biome()) || at.y() >= feet.y() + MOUNTAIN_ABOVE) {
                 high[direction]++;
             }
+            if (column.rock()) {
+                rock[direction]++;
+            }
+            maxY[direction] = Math.max(maxY[direction], at.y());
+            minY[direction] = Math.min(minY[direction], at.y());
+            dry.add(column);
+            directionOf.add(direction);
+        }
+        int[] below = drops(dry);
+        int[] notch = new int[COMPASS.length];
+        for (int i = 0; i < dry.size(); i++) {
+            notch[directionOf.get(i)] = Math.max(notch[directionOf.get(i)], below[i]);
         }
         double[] land = new double[COMPASS.length];
         for (int i = 0; i < COMPASS.length; i++) {
-            double dry = waterside ? all[i] : all[i] - wet[i];
-            land[i] = all[i] == 0 ? 1 : (dry + (deep ? MOUNTAIN_PULL * high[i] : 0)) / all[i];
+            double share = waterside ? all[i] : all[i] - wet[i];
+            double shape = 0;
+            if (deep && all[i] > 0 && maxY[i] >= minY[i]) {
+                double relief = Math.min(1, (maxY[i] - minY[i]) / RELIEF_FULL);
+                double cut = Math.min(1, notch[i] / NOTCH_FULL);
+                shape = MOUNTAIN_PULL * (high[i] + rock[i] + all[i] * relief + all[i] * cut);
+            }
+            land[i] = all[i] == 0 ? 1 : (share + shape) / all[i];
         }
         return land;
+    }
+
+    /**
+     * Dry columns that sit in a notch or on a rocky slope: the surface shape of
+     * a cave mouth or a ravine, whether or not the hole itself can be seen.
+     * One the helper is already standing on is left out.
+     */
+    static List<Pos> cuts(List<Vision.Column> horizon, Pos feet) {
+        List<Vision.Column> dry = horizon.stream().filter(column -> !column.water()).toList();
+        int[] drop = drops(dry);
+        List<Pos> found = new ArrayList<>();
+        for (int i = 0; i < dry.size(); i++) {
+            Vision.Column column = dry.get(i);
+            if (drop[i] < CUT_DROP && !(column.rock() && drop[i] >= ROCK_DROP)) {
+                continue;
+            }
+            Pos at = column.at();
+            if (at.distanceSquared(feet) <= BEEN_THERE * BEEN_THERE && at.y() >= feet.y() - 2) {
+                continue;
+            }
+            found.add(at);
+        }
+        return found;
+    }
+
+    /** How far each dry column sits below the highest dry ground within {@link #NOTCH_REACH}. */
+    private static int[] drops(List<Vision.Column> dry) {
+        int[] drop = new int[dry.size()];
+        for (int i = 0; i < dry.size(); i++) {
+            Pos at = dry.get(i).at();
+            int below = 0;
+            for (int j = 0; j < dry.size(); j++) {
+                if (i == j) {
+                    continue;
+                }
+                Pos other = dry.get(j).at();
+                int dx = other.x() - at.x();
+                int dz = other.z() - at.z();
+                if (dx * dx + dz * dz <= NOTCH_REACH * NOTCH_REACH) {
+                    below = Math.max(below, other.y() - at.y());
+                }
+            }
+            drop[i] = below;
+        }
+        return drop;
     }
 
     /**

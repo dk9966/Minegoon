@@ -44,9 +44,9 @@ class ProspectorTest {
     void waterIsWorthNothingAndMountainsPullADeepSearch() {
         List<Vision.Column> horizon = new ArrayList<>();
         for (int d = 32; d <= 224; d += 16) {
-            horizon.add(new Vision.Column(new Pos(d, 63, 0), "ocean", true));
-            horizon.add(new Vision.Column(new Pos(-d, 71, 0), "plains", false));
-            horizon.add(new Vision.Column(new Pos(0, 120, d), "stony_peaks", false));
+            horizon.add(new Vision.Column(new Pos(d, 63, 0), "ocean", true, false));
+            horizon.add(new Vision.Column(new Pos(-d, 71, 0), "plains", false, false));
+            horizon.add(new Vision.Column(new Pos(0, 120, d), "stony_peaks", false, false));
         }
         double[] deep = Prospector.land(horizon, FEET, true, false);
         assertEquals(0, deep[0]);
@@ -59,6 +59,37 @@ class ProspectorTest {
 
         double[] byWater = Prospector.land(horizon, FEET, false, true);
         assertEquals(1, byWater[0]);
+    }
+
+    @Test
+    void aNotchOfBareRockPullsADeepSearchHarderThanFlatPlains() {
+        List<Vision.Column> horizon = List.of(
+            new Vision.Column(new Pos(0, 80, 48), "plains", false, false),
+            new Vision.Column(new Pos(0, 64, 64), "plains", false, true),
+            new Vision.Column(new Pos(0, 82, 80), "plains", false, false),
+            new Vision.Column(new Pos(-64, 71, 0), "plains", false, false));
+        double[] deep = Prospector.land(horizon, FEET, true, false);
+        assertTrue(deep[2] > deep[4], "south " + deep[2] + " should beat flat west " + deep[4]);
+        assertTrue(deep[2] > 3);
+    }
+
+    @Test
+    void aDryNotchIsAPlaceToLookForACaveEvenWhenNoMouthIsVisible() {
+        List<Vision.Column> horizon = List.of(
+            new Vision.Column(new Pos(0, 80, 48), "plains", false, false),
+            new Vision.Column(new Pos(0, 64, 64), "plains", false, false),
+            new Vision.Column(new Pos(0, 82, 80), "plains", false, false));
+        assertEquals(List.of(new Pos(0, 64, 64)), Prospector.cuts(horizon, FEET));
+    }
+
+    @Test
+    void bareRockOnASmallSlopeCountsAndStandingInTheNotchDoesNot() {
+        Pos notch = new Pos(0, 64, 64);
+        List<Vision.Column> slope = List.of(
+            new Vision.Column(new Pos(0, 70, 48), "plains", false, false),
+            new Vision.Column(notch, "plains", false, true));
+        assertEquals(List.of(notch), Prospector.cuts(slope, FEET));
+        assertTrue(Prospector.cuts(slope, notch).isEmpty());
     }
 
     @Test

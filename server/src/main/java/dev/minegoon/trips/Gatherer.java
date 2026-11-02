@@ -136,6 +136,7 @@ public final class Gatherer {
      * when the meat is still sitting in the inventory.
      */
     public void forage() {
+        body.main().run(() -> Arms.holdForHunt(body.player()));
         Checkpoint checkpoint = retreat.ignoringHunger();
         Prospector.Search search = prospector.search("animals to eat", MEALS.stream().map(Prospector::key).toList());
         while (foodLevel() < FED) {
@@ -165,6 +166,7 @@ public final class Gatherer {
 
     /** Hunts animals until the inventory holds {@code target} of the item. */
     public void hunt(Step.Hunt step, int target) {
+        body.main().run(() -> Arms.holdForHunt(body.player()));
         Prospector.Search search = prospector.search(step);
         while (count(step.item()) < target) {
             retreat.check();
@@ -280,6 +282,7 @@ public final class Gatherer {
      * killing blow is only visible a tick later, or null if it got away alive.
      */
     private Pos chase(UUID id, Checkpoint checkpoint) {
+        body.main().run(() -> Arms.holdForHunt(body.player()));
         Pos last = null;
         for (int attempt = 0; attempt < MAX_CHASES; attempt++) {
             checkpoint.check();
@@ -307,13 +310,17 @@ public final class Gatherer {
         return Bukkit.getEntity(id) instanceof LivingEntity prey ? new Glance(prey.getLocation(), !prey.isDead()) : null;
     }
 
-    /** One swing. Where the animal fell, or null when that swing left it standing. Main thread. */
+    /**
+     * One full swing with the best hunting tool. Null when that swing left it
+     * standing, or when the tool was just drawn: drawing resets the cooldown,
+     * and a half-charged hit is what a bare hand looks like.
+     */
     private Pos strike(UUID id) {
         Player player = body.player();
-        Material held = player.getInventory().getItemInMainHand().getType();
-        Fighter.wield(player);
-        boolean swapped = player.getInventory().getItemInMainHand().getType() != held;
-        if (!(Bukkit.getEntity(id) instanceof LivingEntity prey) || swapped || player.getAttackCooldown() < 0.9f) {
+        if (Arms.holdForHunt(player) || player.getAttackCooldown() < 0.9f) {
+            return null;
+        }
+        if (!(Bukkit.getEntity(id) instanceof LivingEntity prey)) {
             return null;
         }
         Look.at(player, prey.getEyeLocation());

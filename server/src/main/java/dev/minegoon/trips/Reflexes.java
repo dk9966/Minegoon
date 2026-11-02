@@ -246,6 +246,7 @@ public final class Reflexes {
     }
 
     private static void fight(Player player) {
+        Fighter.wield(player);
         if (player.getAttackCooldown() < READY) {
             return;
         }

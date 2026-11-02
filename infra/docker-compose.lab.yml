@@ -24,7 +24,7 @@ services:
       MODE: survival
       DIFFICULTY: normal
       SPAWN_PROTECTION: 0
-      VIEW_DISTANCE: 8
+      VIEW_DISTANCE: 16
       SIMULATION_DISTANCE: 8
       LEVEL_TYPE: ${LEVEL_TYPE:-minecraft:normal}
       ALLOW_NETHER: ${ALLOW_NETHER:-true}
