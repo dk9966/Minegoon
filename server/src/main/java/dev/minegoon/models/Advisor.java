@@ -39,6 +39,27 @@ public final class Advisor {
         and one short note. Use only real biome ids like plains or dark_forest.
         """;
 
+    private static final String DETOUR = """
+        You judge one detour for a Minecraft Java 26.3 survival bot. The detour is
+        something it can already do, and the code has already decided the fight
+        is one it would win. You only say whether doing it now helps the goal
+        more than it costs. Yes when the bot needs what it gives and can spare
+        the health. No when it is a distraction. The note is one short sentence
+        a player would understand.
+        """;
+
+    private static final String DETOUR_SCHEMA = """
+        {
+          "type": "object",
+          "properties": {
+            "take": {"type": "boolean"},
+            "note": {"type": "string", "description": "One short sentence"}
+          },
+          "required": ["take", "note"],
+          "additionalProperties": false
+        }
+        """;
+
     private static final String JUDGE = """
         You judge requests to a Minecraft Java 26.3 survival bot. It has no commands,
         no creative mode, and cannot leave the overworld. It mines, crafts, smelts,
@@ -89,6 +110,30 @@ public final class Advisor {
      * which blocks drop it.
      */
     public record Verdict(boolean possible, String reason, Optional<Lesson> lesson, Set<Material> blocks) {
+    }
+
+    /** Whether to take a detour the code already knows how to perform. */
+    public record Choice(boolean take, String note) {
+    }
+
+    /**
+     * Yes or no on one detour. Empty when there is no model or the call failed,
+     * which the caller treats as a no for this task.
+     */
+    public Optional<Choice> consider(String card) {
+        if (!router.enabled()) {
+            return Optional.empty();
+        }
+        try {
+            fires.calling(false, "advice", model);
+            ModelClient.Answer answer = router.ask(model, DETOUR, card, "detour", DETOUR_SCHEMA);
+            fires.fired(false, "advice", model, answer.usage(), "detour");
+            JsonObject body = answer.body();
+            return Optional.of(new Choice(body.get("take").getAsBoolean(), body.get("note").getAsString()));
+        } catch (IOException | RuntimeException e) {
+            log.warning("Detour call failed: " + e.getMessage());
+            return Optional.empty();
+        }
     }
 
     /** Asked before a task the helper has no plan or knowledge for. Empty when there is no model or the call failed. */

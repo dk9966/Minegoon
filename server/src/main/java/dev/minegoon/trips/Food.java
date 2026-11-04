@@ -7,7 +7,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 /** Food the helper is willing to eat. */
-final class Food {
+public final class Food {
 
     private static final Set<Material> REFUSED = EnumSet.of(
         Material.ROTTEN_FLESH, Material.SPIDER_EYE, Material.POISONOUS_POTATO, Material.PUFFERFISH,
@@ -20,7 +20,7 @@ final class Food {
     private Food() {
     }
 
-    static boolean edible(Material material) {
+    public static boolean edible(Material material) {
         return material.isEdible() && !REFUSED.contains(material);
     }
 

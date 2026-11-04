@@ -24,6 +24,7 @@ import dev.minegoon.jobs.Results;
 import dev.minegoon.jobs.Tutor;
 import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Lessons;
+import dev.minegoon.knowledge.Rulings;
 import dev.minegoon.models.Advisor;
 import dev.minegoon.models.ModelClient;
 import dev.minegoon.models.ModelFires;
@@ -88,7 +89,7 @@ public final class Session {
 
     /** What every helper on the server uses alike. Lessons are shared, so one helper's lesson helps all. */
     public record Shared(Settings settings, MainThread main, ModelClient router, Cookbook cookbook,
-                         Knowledge knowledge, Lessons lessons) {
+                         Knowledge knowledge, Lessons lessons, Rulings rulings) {
     }
 
     private final Plugin plugin;
@@ -375,8 +376,9 @@ public final class Session {
         prospector = new Prospector(knowledge, shared.lessons(), mover, vision, structures, tunneler, helperName, log);
         fighter = new Fighter(body, mover);
         retreat = new Retreat(main, helper, fighter);
+        Gatherer gatherer = new Gatherer(body, mover, miner, pickup, retreat, vision, prospector, fighter);
         Foreman.Crew crew = new Foreman.Crew(
-            new Gatherer(body, mover, miner, pickup, retreat, vision, prospector),
+            gatherer,
             new Crafter(body, miner, placer, pickup),
             new Homecoming(body, mover, tunneler, pickup, fighter, retreat.homeward()),
             retreat,
@@ -389,12 +391,13 @@ public final class Session {
         ModelFires fires = new ModelFires(results::modelFire, log, helper::say);
         Tutor tutor = new Tutor(knowledge, shared.lessons(),
             new Advisor(shared.router(), settings.adviceModel(), log, fires), vision, structures, main,
-            helper::player, Names::biome, log);
+            helper::player, Names::biome, log, shared.rulings(), zones);
 
         MissionBoard missions = new MissionBoard(db, results::record);
         Inspector inspector = new Inspector(main, helper);
         foreman = new Foreman(body, new JobBoard(db), missions, inspector, new Planner(shared.cookbook()),
             crew, tutor, zones, results, db, log);
+        gatherer.whenIdle(foreman::glance);
         Senses senses = new Senses(main, helper, vision, structures, crew.sleeper());
         MissionRunner runner = new MissionRunner(shared.router(), settings.agent(), missions,
             new MissionTools(foreman, crew, missions, inspector, vision, senses, helper, Names::biome).all(),

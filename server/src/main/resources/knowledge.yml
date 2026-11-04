@@ -157,3 +157,34 @@ structures:
   trial_chambers: {need: 2, marks: {trial_spawner: 2, vault: 2, tuff_bricks: 1, chiseled_tuff: 1}}
   trail_ruins:    {need: 2, marks: {suspicious_gravel: 1, mud_bricks: 1}}
   geode:          {need: 2, marks: {smooth_basalt: 1, calcite: 1}}
+
+# What is worth leaving the current step for. This is the wiki, cut down to
+# verbs the body already has. A script is taken whenever it covers a need the
+# task still has. An ask is a judgment: the model is called once, and only when
+# the body could survive it. A take that pays off is remembered, and the next
+# time it is done without a call.
+#
+#   see     structure or mob, matched against what is in sight
+#   gives   what taking it puts in the inventory
+#   covers  needs it satisfies. "food" means the pack is short or the bar is low
+#   take    harvest (ripe crops) or hunt
+#   mode    script, or ask
+offers:
+  village:
+    see: structure
+    gives: [wheat, carrot, potato, beetroot]
+    covers: [food, wheat, bread, carrot, potato, beetroot]
+    take: harvest
+    count: 9
+    mode: script
+  # Reflexes never swing first. A task that still needs iron may, and only when
+  # the fight is one the body would win with health to spare. The model decides
+  # whether winning is worth it; the code decides whether winning is possible.
+  iron_golem:
+    see: mob
+    gives: [iron_ingot]
+    covers: [iron_ingot, raw_iron, iron_pickaxe, iron_sword, iron_axe, shield]
+    take: hunt
+    count: 3
+    mode: ask
+    note: "It has 100 health and hits for 15, and it does not stop once hit."

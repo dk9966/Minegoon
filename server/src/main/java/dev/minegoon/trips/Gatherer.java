@@ -66,9 +66,13 @@ public final class Gatherer {
     private final Retreat retreat;
     private final Vision vision;
     private final Prospector prospector;
+    private final Fighter fighter;
+    /** Looks for a detour when a scan finds nothing. May take one, then returns. */
+    private Runnable glance = () -> {
+    };
 
     public Gatherer(Body body, Mover mover, Miner miner, Pickup pickup, Retreat retreat, Vision vision,
-                    Prospector prospector) {
+                    Prospector prospector, Fighter fighter) {
         this.body = body;
         this.mover = mover;
         this.miner = miner;
@@ -76,6 +80,13 @@ public final class Gatherer {
         this.retreat = retreat;
         this.vision = vision;
         this.prospector = prospector;
+        this.fighter = fighter;
+    }
+
+    /** Called when a scan of the current step finds nothing, before walking on. */
+    public void whenIdle(Runnable glance) {
+        this.glance = glance == null ? () -> {
+        } : glance;
     }
 
     /** Mines until the inventory holds {@code target} of the item. */
@@ -108,6 +119,10 @@ public final class Gatherer {
                 }
             }
             if (candidates.isEmpty()) {
+                glance.run();
+                if (count(step.item()) >= target) {
+                    continue;
+                }
                 search.next(checkpoint);
                 continue;
             }
@@ -146,6 +161,10 @@ public final class Gatherer {
             }
             List<UUID> prey = vision.creatures(MEALS, entity -> true, 1);
             if (prey.isEmpty()) {
+                glance.run();
+                if (body.main().call(() -> Food.any(body.player()))) {
+                    continue;
+                }
                 search.next(checkpoint);
                 continue;
             }
@@ -170,6 +189,10 @@ public final class Gatherer {
             retreat.check();
             List<UUID> prey = vision.creatures(step.mobs(), dropping(step.item()), 1);
             if (prey.isEmpty()) {
+                glance.run();
+                if (count(step.item()) >= target) {
+                    continue;
+                }
                 search.next(retreat);
                 continue;
             }
@@ -179,6 +202,72 @@ public final class Gatherer {
                 body.main().sleep(10);
                 pickup.collect(fell, 5, retreat);
             }
+        }
+    }
+
+    /**
+     * Harvests ripe crops already in sight, walking to {@code near} first when
+     * the fields are beside a structure rather than underfoot. Does not go
+     * looking anywhere else: a detour that finds nothing returns to the step.
+     */
+    public void gatherNear(Step.Gather step, Pos near) {
+        if (near != null) {
+            mover.walk(Goal.near(near, 8), retreat.ignoringHunger());
+        }
+        Set<Material> minable = body.main().call(() -> harvestable(step.blocks()));
+        if (minable.isEmpty()) {
+            return;
+        }
+        int goal = count(step.item()) + step.count();
+        Checkpoint checkpoint = retreat.ignoringHunger();
+        for (Pos block : vision.blocks(minable, MAX_CANDIDATES, takeable(Set.of(), step.ripe()))) {
+            checkpoint.check();
+            if (count(step.item()) >= goal) {
+                return;
+            }
+            boolean still = body.main().call(() -> minable.contains(body.live().type(block.x(), block.y(), block.z())));
+            if (still && mover.walk(Goal.reach(block), checkpoint) && miner.mine(block).confirmed()) {
+                vision.touched(block);
+                body.main().sleep(10);
+                pickup.collect(block, 4, checkpoint);
+            }
+        }
+    }
+
+    /**
+     * Fights one mob already in sight and picks up what it drops. A neutral mob
+     * is fought on purpose here; reflexes still never start that fight themselves.
+     * Does not go looking for another.
+     */
+    public void huntInSight(Step.Hunt step) {
+        List<UUID> prey = vision.creatures(step.mobs(), dropping(step.item()), 1);
+        if (prey.isEmpty()) {
+            return;
+        }
+        UUID id = prey.getFirst();
+        Glance seen = body.main().call(() -> glance(id));
+        if (seen == null) {
+            return;
+        }
+        EntityType type = body.main().call(() -> {
+            Entity entity = Bukkit.getEntity(id);
+            return entity == null ? null : entity.getType();
+        });
+        if (type != null && Bestiary.of(type).tactic() == Bestiary.Tactic.NEUTRAL) {
+            Fighter.Tally tally = fighter.fight(id);
+            if (tally.won()) {
+                Pos fell = body.main().call(() -> {
+                    Entity entity = Bukkit.getEntity(id);
+                    return entity == null ? Pos.of(seen.at()) : Pos.of(entity.getLocation());
+                });
+                pickup.collect(fell, 5, retreat);
+            }
+            return;
+        }
+        Pos fell = chase(id, retreat);
+        if (fell != null) {
+            body.main().sleep(10);
+            pickup.collect(fell, 5, retreat);
         }
     }
 
