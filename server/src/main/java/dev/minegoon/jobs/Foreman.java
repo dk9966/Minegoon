@@ -8,12 +8,14 @@ import dev.minegoon.actions.Body;
 import dev.minegoon.actions.Crafter;
 import dev.minegoon.actions.Hands;
 import dev.minegoon.knowledge.Knowledge.SearchOrders;
+import dev.minegoon.knowledge.Notices;
 import dev.minegoon.models.Advisor;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.planner.Planner;
 import dev.minegoon.safety.Zones;
 import dev.minegoon.trips.Bestiary;
 import dev.minegoon.trips.Farmer;
+import dev.minegoon.trips.Food;
 import dev.minegoon.trips.Fighter;
 import dev.minegoon.trips.Filler;
 import dev.minegoon.trips.Gatherer;
@@ -24,6 +26,8 @@ import dev.minegoon.trips.Sleeper;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,6 +40,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
+import org.bukkit.Keyed;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -53,8 +58,10 @@ import org.bukkit.inventory.Recipe;
  * A task does not give up because it is hard. A failed job is retried, then
  * replanned from the inventory, then planned another way when one exists, and
  * the cycle starts again. When a search keeps coming up empty the tutor may ask
- * a model for advice once, and the answer becomes a lesson. A task only stops
- * when a player stops it, or when no plan for it exists at all.
+ * a model for advice once, and the answer becomes a lesson. When a scan finds
+ * nothing, a village or an iron golem in sight can be taken if the task still
+ * needs what it gives. A task only stops when a player stops it, or when no
+ * plan for it exists at all.
  *
  * A mission runs on the same worker thread and fetches its tasks one by one,
  * so stopping, pausing, calling the helper over, and dying reach it too.
@@ -118,6 +125,8 @@ public final class Foreman {
     private final Set<Long> packed = new HashSet<>();
     /** Jobs queued to pack supplies rather than for the goal itself. */
     private final Set<Long> packingJobs = new HashSet<>();
+    /** Crafts queued by a detour. A failure ends that craft and the task carries on. */
+    private final Set<Long> detours = new HashSet<>();
     private final Stall stall = new Stall();
     private Thread worker;
     private LongConsumer missionRunner = id -> {
@@ -852,6 +861,155 @@ public final class Foreman {
         }
     }
 
+    /**
+     * Called when a scan of the current step finds nothing. A village's crops
+     * are taken in code. An iron golem is a question, and only when the fight
+     * is one the body would win. Either way the step then carries on.
+     */
+    public void glance() {
+        Optional<Task> active = board.current().filter(task -> task.status() == Task.Status.ACTIVE);
+        if (active.isEmpty()) {
+            return;
+        }
+        Task task = active.get();
+        Optional<Job> next = board.next(task.id());
+        if (next.isEmpty()) {
+            return;
+        }
+        Job job = next.get();
+        Optional<Notices.Spot> spot = tutor.notice(needs(task, job), job.step());
+        if (spot.isEmpty()) {
+            return;
+        }
+        switch (spot.get()) {
+            case Notices.Spot.Ask ask -> judge(task, ask);
+            case Notices.Spot.Act act -> {
+                tutor.settle(act.offer());
+                say(act.say());
+                db.log(task.id(), "detour", act.say());
+                take(task, act);
+            }
+        }
+    }
+
+    /** The model says yes or no. A no is for this task only. A yes that pays off is kept. */
+    private void judge(Task task, Notices.Spot.Ask ask) {
+        tutor.settle(ask.offer());
+        board.countModelCall(task.id());
+        Optional<Advisor.Choice> choice = tutor.consider(ask.card());
+        if (choice.isEmpty() || !choice.get().take()) {
+            String note = choice.map(Advisor.Choice::note).orElse("leaving it");
+            db.log(task.id(), "detour", ask.offer() + ": no, " + note);
+            choice.ifPresent(answer -> say(answer.note()));
+            return;
+        }
+        Advisor.Choice yes = choice.get();
+        say(yes.note());
+        db.log(task.id(), "detour", ask.offer() + ": " + yes.note());
+        int before = held(ask.step());
+        take(task, new Notices.Spot.Act(ask.offer(), ask.step(), yes.note(), false));
+        if (held(ask.step()) > before) {
+            tutor.kept(ask.offer(), yes.note());
+        }
+    }
+
+    /** Performs the detour. A remembered take that finds nothing is forgotten after two such misses. */
+    private void take(Task task, Notices.Spot.Act act) {
+        int before = held(act.step());
+        try {
+            switch (act.step()) {
+                case Step.Gather gather -> crew.gatherer().gatherNear(gather, tutor.nearest(act.offer()).orElse(null));
+                case Step.Hunt hunt -> crew.gatherer().huntInSight(hunt);
+                default -> {
+                }
+            }
+        } catch (ActionFailed failure) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new Cancelled();
+            }
+            db.log(task.id(), "detour", act.offer() + " didn't work: " + failure.getMessage());
+        }
+        if (act.remembered() && held(act.step()) <= before) {
+            tutor.forgot(act.offer());
+        }
+        if (act.offer().equals("village")) {
+            bake(task);
+        }
+    }
+
+    /** Wheat from a village field becomes bread, which the pack can eat. One craft, then on. */
+    private void bake(Task task) {
+        int loaves = held(Material.WHEAT) / 3;
+        if (loaves < 1) {
+            return;
+        }
+        String recipe = body.main().call(this::breadRecipe);
+        if (recipe == null) {
+            return;
+        }
+        long id = board.addFront(task.id(), new Step.Craft(ItemSet.of(Material.BREAD), List.of(recipe), loaves, 1));
+        detours.add(id);
+        say("I'll bake that wheat into bread.");
+    }
+
+    /** A recipe key for bread, or null when this server has none. Main thread. */
+    private String breadRecipe() {
+        Iterator<Recipe> recipes = Bukkit.recipeIterator();
+        while (recipes.hasNext()) {
+            Recipe recipe = recipes.next();
+            if (recipe.getResult().getType() == Material.BREAD && recipe instanceof Keyed keyed) {
+                return keyed.getKey().toString();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * What the task still wants, as item ids plus {@code food} when the pack is
+     * thin or the bar is low. Supplies for the step in progress count: a deep
+     * trip that has not packed meat yet wants food even with a full bar.
+     */
+    private Set<String> needs(Task task, Job job) {
+        Set<String> needs = new LinkedHashSet<>();
+        needs.add(ItemSet.key(task.goal()));
+        String subject = crew.prospector().subject(job.step());
+        int amount = switch (job.step()) {
+            case Step.Gather gather -> gather.count();
+            case Step.Hunt hunt -> hunt.count();
+            default -> task.count();
+        };
+        Map<Material, Integer> heldNow = body.main().call(this::inventory);
+        if (subject != null) {
+            for (Tutor.Shortfall shortfall : tutor.missingSupplies(subject, amount, heldNow)) {
+                shortfall.items().forEach(item -> needs.add(ItemSet.key(item)));
+                if (shortfall.items().stream().anyMatch(Food::edible)) {
+                    needs.add("food");
+                }
+            }
+        }
+        if (body.main().call(this::shortOfFood)) {
+            needs.add("food");
+        }
+        return needs;
+    }
+
+    /** Under six things to eat, or a bar under 14 with under sixteen. Main thread. */
+    private boolean shortOfFood() {
+        Player player = body.player();
+        int edible = 0;
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            if (stack != null && Food.edible(stack.getType())) {
+                edible += stack.getAmount();
+            }
+        }
+        return edible < 6 || (player.getFoodLevel() < 14 && edible < 16);
+    }
+
+    /** How many of a step's item are held. */
+    private int held(Step step) {
+        return step.counted() == null ? 0 : body.main().call(() -> Hands.count(body.player(), step.counted()));
+    }
+
     private void run(Task task, Job job) {
         int start = job.baseline();
         switch (job.step()) {
@@ -881,6 +1039,7 @@ public final class Foreman {
     }
 
     private void completed(Task task, Job job) {
+        detours.remove(job.id());
         board.complete(job);
         db.log(task.id(), "done", job.step().describe());
         if (inTheWorld(job.step())) {
@@ -938,6 +1097,11 @@ public final class Foreman {
      * Returns false only when no plan exists at all.
      */
     private boolean failed(Task task, Job job, String problem, boolean dry) {
+        if (detours.remove(job.id())) {
+            board.block(job, problem);
+            db.log(task.id(), "detour", job.step().describe() + ": " + problem);
+            return true;
+        }
         int attempts = board.fail(job, problem);
         db.log(task.id(), "failed", job.step().describe() + ": " + problem);
         if (job.step() instanceof Step.Recover) {

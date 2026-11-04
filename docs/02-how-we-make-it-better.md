@@ -140,6 +140,7 @@ One mission goes like this:
 - Playbooks are written by us (or proposed by the model) and **only saved once they pass tests in the lab** (see section 9).
 - Each playbook declares what it needs ("iron pickaxe, 1 bucket"), what it produces ("obsidian portal lit"), and its finish-line check.
 - The foreman prefers a playbook. When none fits, it improvises with single actions. Improvisations that keep working become candidates for new playbooks.
+- **An offer is not a new playbook.** When a scan finds nothing the current step wants, the knowledge file lists a few things worth stopping for (a village's crops, an iron golem's iron). A safe one is taken by code. A dangerous one is a single model question, and only if the fight math says it is winnable. A yes that pays off is remembered, so the next time it is code. The full rule is in `04-mvp-plan.md`, under "When the world offers something the step cannot use".
 
 ---
 

@@ -197,9 +197,23 @@ All model calls go through OpenRouter, so swapping models is a config change.
 | Writing a mission's plan and handling surprises | `planner-model` in the config, a strong model | At the start of a mission, after a failed step, or after news such as a death |
 | A mission's turns that go to plan | `desk-model` | Every other mission turn |
 | A new idea when the knowledge falls short | `advice-model` in the config | A search came up dry, or a step failed six times |
-| Everything else | No model | Recipes, crafting, smelting, searching, fighting, reflexes, checks, retreats, handing items over |
+| Whether to take a dangerous offer | `advice-model` | An iron golem is in sight, the task still needs iron, and the fight is one the body would win |
+| Everything else | No model | Recipes, crafting, smelting, searching, fighting, reflexes, checks, retreats, handing items over, and a village's crops when food is short |
 
 A trip that goes well makes no model calls at all. The advice call gets a short briefing: the thing, the moves already listed for it, the biome, and what went wrong. Its answer is a list of moves. If that list finds the thing, it is saved in `lessons.json` and tried first next time; one that misses twice is dropped, so the file stays short.
+
+### When the world offers something the step cannot use
+
+Static steps stay in charge of anything with one right answer: crafting, smelting, hunting a cow, mining a block the step already names. They go wrong when the world puts something useful in sight that the step was not written for. A diamond trip that walks through a village keeps looking for cows. An iron golem standing in that village is left alone, because reflexes never swing first.
+
+The trigger is a mismatch, checked when a scan of the current step finds nothing. It is not a timer, and it is not "something is nearby".
+
+1. The file `offers` in `knowledge.yml` is the wiki, cut down to verbs the body already has. A village gives ripe crops and covers food. An iron golem gives iron and covers a missing pickaxe. Anything else in sight is ignored.
+2. An offer matches only when it is in sight, it covers a need the task still has (the goal, a trip supply, or a thin food pack), and the step already running is not that offer. A protected area is not in sight for this. A full pack walks past a village and no call is made.
+3. A `script` offer is taken immediately. Crops are harvested and wheat is baked into bread. No model.
+4. An `ask` offer is a judgment. The code first asks whether the body would win the fight with health to spare. If not, it walks on. If yes, the advice model gets one short card (the need, the danger, health and kit) and answers yes or no. A no lasts for this task only, because the next task may be better armed. A yes that actually puts the items in the inventory is saved in `rulings.json` and done without a call next time. Two misses drop it.
+
+Running the bot until it discovers that villages have crops would relearn the wiki at model prices. The file holds the facts. The model is reserved for the combination the file refuses to hard-code: this goal, this kit, this golem.
 
 ### 7. Practice before the real world
 
@@ -320,9 +334,12 @@ Changed from the plan while building:
 
 Next for this phase: the first agent lab pass. After that, new abilities come in as new tools: opening chests, placing a block at a spot, following a player. Each one is added only after it passes its own lab test. The loop itself does not change.
 
+Done November 4, 2026: offers. A scan that finds nothing the current step wants can stop for something in sight that covers a need the task still has. Village crops are a script (harvest, then bake the wheat). An iron golem is a question to the advice model, and only after the fight math says the body would win; a yes that pays off is remembered in `rulings.json`. The trigger and the reasons the other two ideas (a wiki in the prompt, learning Minecraft by running) were turned down are under "When the world offers something the step cannot use".
+
 Next:
 
 - The first agent lab pass (`scripts/long-tasks.sh 1 agent`), with the OpenRouter key in the lab config.
+- A lab look at the new offers: a hungry trip that starts in sight of a village should come back with bread or crops, and a trip that needs iron should only start a golem fight when it is armed for one. The unit tests cover the choice. They do not cover the walk.
 - A full three-repeat skills pass on an idle machine. The last one ran while the machine was busy and the server stalled, so the centring fix for vines and the armed walk home have no full pass yet.
 - Sheep, amethyst, and diamonds, worked on in parallel.
 - Moving the task-status writes off the server thread.
@@ -348,7 +365,7 @@ Next:
 
 ### What is code, and what is a model
 
-Minecraft facts and standing rules are code. The model is called when there is a real choice: heading out into the world, a search that found nothing, or a step that just failed. It is not called to invent a recipe.
+Minecraft facts and standing rules are code. The model is called when there is a real choice: heading out into the world, a search that found nothing, a step that just failed, or a dangerous offer in sight that the step was not written for. It is not called to invent a recipe, and it is not called to loot a village.
 
 Code knows:
 
@@ -356,11 +373,12 @@ Code knows:
 - Wheat can be harvested ripe, or grown: hoe dirt, plant seeds, bone meal from bones, harvest. Bread is then the normal recipe.
 - A water or lava bucket is a right-click on a source block, not a recipe.
 - Hungry with nothing to eat: hunt a cow, pig, sheep, or chicken and eat it, then continue the task.
+- A village in sight while food is short: harvest the ripe crops and bake the wheat. The pack being full means walk on. An iron golem is not on this list; the model is asked, and only when the fight math says the body would win.
 - The tool for the current step is about to break: craft another of that tool, then continue.
 - Night with no weapon: craft a stone axe. Night on the surface: make a bed if needed, sleep, pick the bed back up.
 - Nothing of this source in range, but another source is known: the model is told that, and it can switch. With no key, the code switches on its own.
 
-Inside a task, the model does three things: choose the move before a gather, hunt, grow, or fill, choose again when that search is empty, and choose again when any step fails. A third failure stops the task without another call.
+Inside a task, the model does three things: choose the move before a gather, hunt, grow, or fill, choose again when that search is empty, and choose again when any step fails. A third failure stops the task without another call. A fourth kind of call, still the advice model, judges one dangerous offer in sight (an iron golem when iron is short and the fight is winnable). Looting a village for food is not one of these calls. It is an offer in the knowledge file, taken by code.
 
 Still not scripted, because they are a judgment or a different kind of action: building a shelter, fishing, villager trades, opening chests, and killing creepers for gunpowder. A creeper chase that just walks up and hits it blows the helper up.
 

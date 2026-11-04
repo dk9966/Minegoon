@@ -128,7 +128,7 @@ public final class Bestiary {
             "never look at its head; if angry, shield up and fight it, arrows miss it"));
         neutral(EntityType.ZOMBIFIED_PIGLIN, 20, 8, "never hit one: the whole group turns on you");
         neutral(EntityType.PIGLIN, 16, 5, "wear gold, or leave it be");
-        neutral(EntityType.IRON_GOLEM, 100, 15, "never hit it");
+        neutral(EntityType.IRON_GOLEM, 100, 15, "leave it alone unless sent to hunt it for iron");
         neutral(EntityType.WOLF, 8, 4, "never hit one: the pack comes");
         neutral(EntityType.BEE, 10, 2, "never hit one: the hive comes");
         neutral(EntityType.POLAR_BEAR, 30, 6, "keep away from its cubs");

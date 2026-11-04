@@ -130,16 +130,49 @@ public final class Knowledge {
     public record Structure(String name, int need, Map<String, Integer> marks) {
     }
 
+    /**
+     * Something in sight worth leaving the current step for. {@code see} is
+     * {@code structure} or {@code mob}. {@code covers} lists the needs it
+     * satisfies, including the token {@code food}. {@code take} is
+     * {@code harvest} or {@code hunt}. {@code mode} is {@code script}, which is
+     * just done, or {@code ask}, which a model judges once.
+     */
+    public record Offer(String name, String see, List<String> gives, List<String> covers, String take, int count,
+                        String mode, String note) {
+
+        /** A judgment rather than a standing rule. */
+        public boolean ask() {
+            return "ask".equals(mode);
+        }
+
+        /** True when this offer gives something {@code needs} still wants. */
+        public boolean matches(Set<String> needs) {
+            for (String need : covers) {
+                if (needs.contains(need)) {
+                    return true;
+                }
+            }
+            for (String give : gives) {
+                if (needs.contains(give)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     private final Map<String, Find> finds;
     private final Map<String, List<Supply>> trips;
     private final List<Structure> structures;
+    private final List<Offer> offers;
     private final List<String> problems;
 
     private Knowledge(Map<String, Find> finds, Map<String, List<Supply>> trips, List<Structure> structures,
-                      List<String> problems) {
+                      List<Offer> offers, List<String> problems) {
         this.finds = finds;
         this.trips = trips;
         this.structures = structures;
+        this.offers = offers;
         this.problems = problems;
     }
 
@@ -161,10 +194,13 @@ public final class Knowledge {
             map(fields.get("marks")).forEach((block, weight) -> marks.put(block, number(weight)));
             structures.add(new Structure(name, number(fields.getOrDefault("need", 1)), Map.copyOf(marks)));
         });
+        List<Offer> offers = new ArrayList<>();
+        map(root.get("offers")).forEach((name, entry) -> offers.add(offer(name, map(entry), problems)));
         finds.values().stream()
             .filter(find -> find.trip() != null && !trips.containsKey(find.trip()))
             .forEach(find -> problems.add("unknown trip " + find.trip()));
-        return new Knowledge(Map.copyOf(finds), Map.copyOf(trips), List.copyOf(structures), problems);
+        return new Knowledge(Map.copyOf(finds), Map.copyOf(trips), List.copyOf(structures), List.copyOf(offers),
+            problems);
     }
 
     /**
@@ -219,6 +255,11 @@ public final class Knowledge {
         return names;
     }
 
+    /** What is worth stopping for, in the order the file lists it. A script comes before an ask. */
+    public List<Offer> offers() {
+        return offers;
+    }
+
     /**
      * Names the game does not know, and moves that do not exist. Typos in the
      * file would otherwise quietly never match anything.
@@ -237,7 +278,44 @@ public final class Knowledge {
             .filter(knownThing.negate()).forEach(item -> all.add("trip " + name + ": unknown item " + item))));
         structures.forEach(structure -> structure.marks().keySet().stream().filter(knownThing.negate())
             .forEach(block -> all.add(structure.name() + ": unknown block " + block)));
+        for (Offer offer : offers) {
+            if (offer.see().equals("structure") && !structureNames().contains(offer.name())) {
+                all.add("offer " + offer.name() + ": unknown structure");
+            }
+            if (offer.see().equals("mob") && !knownThing.test(offer.name())) {
+                all.add("offer " + offer.name() + ": unknown mob");
+            }
+            offer.gives().stream().filter(knownThing.negate())
+                .forEach(item -> all.add("offer " + offer.name() + ": unknown item " + item));
+            offer.covers().stream().filter(need -> !need.equals("food") && !knownThing.test(need))
+                .forEach(need -> all.add("offer " + offer.name() + ": unknown need " + need));
+        }
         return all;
+    }
+
+    private static Offer offer(String name, Map<String, Object> fields, List<String> problems) {
+        String see = text(fields.get("see"));
+        String take = text(fields.get("take"));
+        String mode = text(fields.get("mode"));
+        int count = fields.containsKey("count") ? number(fields.get("count")) : 0;
+        if (!see.equals("structure") && !see.equals("mob")) {
+            problems.add(name + ": see is structure or mob");
+        }
+        if (!take.equals("harvest") && !take.equals("hunt")) {
+            problems.add(name + ": take is harvest or hunt");
+        }
+        if (!mode.equals("script") && !mode.equals("ask")) {
+            problems.add(name + ": mode is script or ask");
+        }
+        if (count < 1) {
+            problems.add(name + ": count must be at least 1");
+        }
+        return new Offer(name, see, strings(fields.get("gives")), strings(fields.get("covers")), take, count, mode,
+            text(fields.get("note")));
+    }
+
+    private static String text(Object value) {
+        return value == null ? "" : value.toString();
     }
 
     private Find entry(String name) {

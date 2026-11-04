@@ -3,24 +3,41 @@ package dev.minegoon.jobs;
 import dev.minegoon.MainThread;
 import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Lessons;
+import dev.minegoon.knowledge.Notices;
+import dev.minegoon.knowledge.Rulings;
 import dev.minegoon.models.Advisor;
+import dev.minegoon.safety.Zones;
+import dev.minegoon.trips.Bestiary;
+import dev.minegoon.trips.Food;
+import dev.minegoon.world.Pos;
 import dev.minegoon.world.Structures;
 import dev.minegoon.world.Vision;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 /**
  * Keeps the knowledge honest. When what the helper knows has run out, it asks
@@ -39,10 +56,15 @@ public final class Tutor {
     private final Supplier<Player> player;
     private final Predicate<String> knownBiome;
     private final Logger log;
+    private final Rulings rulings;
+    private final Zones zones;
     private final Set<String> askedThisTask = new HashSet<>();
+    /** Offers already taken or asked about during the task now running. */
+    private final Set<String> settled = new HashSet<>();
 
     public Tutor(Knowledge knowledge, Lessons lessons, Advisor advisor, Vision vision, Structures structures,
-                 MainThread main, Supplier<Player> player, Predicate<String> knownBiome, Logger log) {
+                 MainThread main, Supplier<Player> player, Predicate<String> knownBiome, Logger log,
+                 Rulings rulings, Zones zones) {
         this.knowledge = knowledge;
         this.lessons = lessons;
         this.advisor = advisor;
@@ -52,11 +74,89 @@ public final class Tutor {
         this.player = player;
         this.knownBiome = knownBiome;
         this.log = log;
+        this.rulings = rulings;
+        this.zones = zones;
     }
 
-    /** A fresh task may ask about everything again. */
+    /** A fresh task may ask about everything again, and may stop for the same offer again. */
     public void newTask() {
         askedThisTask.clear();
+        settled.clear();
+    }
+
+    /**
+     * An offer in sight that covers {@code needs} and is not what {@code step}
+     * is already doing. Empty when the world has nothing the step cannot spend,
+     * or when there is no body to look with.
+     */
+    public Optional<Notices.Spot> notice(Set<String> needs, Step step) {
+        if (vision == null || structures == null || player == null || main == null || needs.isEmpty()) {
+            return Optional.empty();
+        }
+        String world = main.call(() -> {
+            Player self = player.get();
+            return self == null ? null : self.getWorld().getName();
+        });
+        if (world == null) {
+            return Optional.empty();
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        structures.inSight(Set.of()).stream()
+            .filter(sighting -> zones == null || !zones.protects(world, sighting.at().x(), sighting.at().z()))
+            .map(Structures.Sighting::name)
+            .forEach(seen::add);
+        Map<String, Boolean> mobs = new LinkedHashMap<>();
+        for (Knowledge.Offer offer : knowledge.offers()) {
+            if (!offer.see().equals("mob")) {
+                continue;
+            }
+            Optional<EntityType> type = creature(offer.name());
+            if (type.isEmpty()) {
+                continue;
+            }
+            List<UUID> ids = vision.creatures(Set.of(type.get()), this::outsideProtection, 1);
+            if (!ids.isEmpty()) {
+                mobs.put(offer.name(), winnable(ids.getFirst()));
+            }
+        }
+        String situation = main.call(() -> reading(player.get()));
+        return Notices.spot(knowledge.offers(), needs, new Notices.Sight(seen, mobs), Notices.busy(step), settled,
+            rulings == null ? name -> Optional.empty() : rulings::get, situation);
+    }
+
+    /** This task has dealt with the offer, whether it was taken or turned down. */
+    public void settle(String offer) {
+        settled.add(offer);
+    }
+
+    /** The nearest sighting of a structure, for walking up to its fields. */
+    public Optional<Pos> nearest(String structure) {
+        if (structures == null || player == null || main == null) {
+            return Optional.empty();
+        }
+        Pos feet = main.call(() -> Pos.of(player.get().getLocation()));
+        return structures.inSight(Set.of(structure)).stream()
+            .min(Comparator.comparingDouble(sighting -> sighting.at().distanceSquared(feet)))
+            .map(Structures.Sighting::at);
+    }
+
+    /** Yes or no from the model. Empty without one. */
+    public Optional<Advisor.Choice> consider(String card) {
+        return advisor == null ? Optional.empty() : advisor.consider(card);
+    }
+
+    /** The take paid off, so next time it is done without asking. */
+    public void kept(String offer, String note) {
+        if (rulings != null) {
+            rulings.worked(offer, note);
+        }
+    }
+
+    /** A remembered take missed. Two misses and it is asked about again. */
+    public void forgot(String offer) {
+        if (rulings != null) {
+            rulings.missed(offer);
+        }
     }
 
     /**
@@ -176,6 +276,58 @@ public final class Tutor {
 
     private List<Knowledge.Supply> supplies(Trip trip) {
         return trip.subject() == null ? List.of() : knowledge.trip(knowledge.find(List.of(trip.subject())).trip());
+    }
+
+    /** A mob standing in a protected area is someone else's. */
+    private boolean outsideProtection(Entity entity) {
+        return zones == null || !zones.protects(entity.getWorld().getName(), entity.getLocation().getBlockX(),
+            entity.getLocation().getBlockZ());
+    }
+
+    private static Optional<EntityType> creature(String name) {
+        try {
+            return Optional.of(EntityType.valueOf(name.toUpperCase(Locale.ROOT)));
+        } catch (IllegalArgumentException unknown) {
+            return Optional.empty();
+        }
+    }
+
+    /** The fight math already says whether this mob is one to start. Main thread for the second half. */
+    private boolean winnable(UUID id) {
+        return main.call(() -> {
+            if (!(Bukkit.getEntity(id) instanceof LivingEntity foe) || foe.isDead()) {
+                return false;
+            }
+            Player self = player.get();
+            if (self == null) {
+                return false;
+            }
+            boolean shield = self.getInventory().contains(Material.SHIELD)
+                || self.getInventory().getItemInOffHand().getType() == Material.SHIELD;
+            return Bestiary.wins(Bestiary.strength(self), List.of(Bestiary.Foe.of(foe)), shield);
+        });
+    }
+
+    /** Health, food, and kit, in one line for the model. Main thread. */
+    private static String reading(Player self) {
+        if (self == null) {
+            return "";
+        }
+        int edible = 0;
+        for (ItemStack stack : self.getInventory().getStorageContents()) {
+            if (stack != null && Food.edible(stack.getType())) {
+                edible += stack.getAmount();
+            }
+        }
+        boolean shield = self.getInventory().contains(Material.SHIELD)
+            || self.getInventory().getItemInOffHand().getType() == Material.SHIELD;
+        AttributeInstance maxHealth = self.getAttribute(Attribute.MAX_HEALTH);
+        double max = maxHealth == null ? 20 : maxHealth.getValue();
+        return "health " + (int) Math.ceil(self.getHealth()) + "/" + (int) Math.ceil(max)
+            + ", food " + self.getFoodLevel()
+            + ", holding " + self.getInventory().getItemInMainHand().getType().name().toLowerCase(Locale.ROOT)
+            + (shield ? ", shield" : ", no shield")
+            + ", edible " + edible;
     }
 
     private static String describe(Knowledge.Find find) {

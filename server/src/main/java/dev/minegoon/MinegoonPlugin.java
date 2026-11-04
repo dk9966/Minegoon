@@ -4,6 +4,7 @@ import dev.minegoon.chat.ChatListener;
 import dev.minegoon.chat.LaneCommand;
 import dev.minegoon.knowledge.Knowledge;
 import dev.minegoon.knowledge.Lessons;
+import dev.minegoon.knowledge.Rulings;
 import dev.minegoon.models.OpenRouter;
 import dev.minegoon.planner.Cookbook;
 import dev.minegoon.trips.Prospector;
@@ -42,8 +43,10 @@ public final class MinegoonPlugin extends JavaPlugin {
             settings.requestTimeout());
         Knowledge knowledge = readKnowledge();
         Lessons lessons = new Lessons(getDataFolder().toPath().resolve("lessons.json"));
-        getLogger().info("Knowledge loaded; " + lessons.size() + " lessons learned so far.");
-        Session.Shared shared = new Session.Shared(settings, main, router, cookbook, knowledge, lessons);
+        Rulings rulings = new Rulings(getDataFolder().toPath().resolve("rulings.json"));
+        getLogger().info("Knowledge loaded; " + lessons.size() + " lessons learned so far, "
+            + rulings.size() + " detours remembered.");
+        Session.Shared shared = new Session.Shared(settings, main, router, cookbook, knowledge, lessons, rulings);
 
         try {
             if (settings.lanes().isEmpty()) {

@@ -103,10 +103,10 @@ public final class JobBoard {
         }
     }
 
-    public synchronized void addFront(long taskId, Step step) {
+    public synchronized long addFront(long taskId, Step step) {
         int position = db.first("SELECT COALESCE(MIN(position), 1) AS first FROM jobs WHERE task_id = ? AND " + UNFINISHED,
             row -> row.getInt("first"), taskId).orElse(1);
-        insert(taskId, position - 1, step);
+        return insert(taskId, position - 1, step);
     }
 
     /** Starts the clock on a job: remembers how much of its item there was before it began. */
@@ -139,8 +139,8 @@ public final class JobBoard {
                 attempts, error, job.id()));
     }
 
-    private void insert(long taskId, int position, Step step) {
-        db.insert("INSERT INTO jobs (task_id, position, kind, spec, status) VALUES (?, ?, ?, ?, 'OPEN')",
+    private long insert(long taskId, int position, Step step) {
+        return db.insert("INSERT INTO jobs (task_id, position, kind, spec, status) VALUES (?, ?, ?, ?, 'OPEN')",
             taskId, position, step.getClass().getSimpleName(), gson.toJson(step));
     }
 

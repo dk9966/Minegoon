@@ -21,7 +21,8 @@ class TutorTest {
           deep: {iron_pickaxe: 2, "bread^": [4, 0.5]}
         """));
 
-    private final Tutor tutor = new Tutor(KNOWLEDGE, null, null, null, null, null, null, biome -> true, null);
+    private final Tutor tutor = new Tutor(KNOWLEDGE, null, null, null, null, null, null, biome -> true, null,
+        null, null);
 
     @Test
     void theFirstTripPacksWhatOnlyTheSurfaceHasForTheTripsAfterIt() {

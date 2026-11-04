@@ -27,6 +27,9 @@ class KnowledgeTest {
         assertEquals(14, iron.best());
         assertEquals("deep", knowledge.find(List.of("diamond_ore")).trip());
         assertTrue(knowledge.structureNames().contains("village"));
+        assertEquals("script", knowledge.offers().getFirst().mode());
+        assertEquals("village", knowledge.offers().getFirst().name());
+        assertTrue(knowledge.offers().stream().anyMatch(offer -> offer.name().equals("iron_golem") && offer.ask()));
     }
 
     @Test
